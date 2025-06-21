@@ -1,0 +1,69 @@
+# Build results
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider IDE
+.idea/
+
+# Visual Studio Code
+.vscode/
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# ASP.NET Scaffolding
+ScaffoldingReadMe.txt
+
+# Web publish
+*.Publish.xml
+*.pubxml
+*.publishproj
+
+# Resharper
+_ReSharper*/
+*.DotSettings.user
+
+# Azure Pipelines
+**/.azure-pipelines/
+
+# JetBrains Rider
+.idea/
+
+# dotCover
+*.dcvr
+*.dcvr.xml
+
+# Test Results
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+
+# StyleCop
+StyleCopReport.xml
+
+# Windows image file caches
+Thumbs.db
+ehthumbs.db
+
+# Folder config file
+Desktop.ini
+
+# OS generated files
+.DS_Store
+*.swp
+*.swo
+
+# Crash logs
+*.stackdump
