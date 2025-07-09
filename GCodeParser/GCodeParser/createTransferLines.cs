@@ -17,6 +17,23 @@ namespace GCodeParser
      
     }
 
+    // public static void InsertTransitKeys(List<string> lines, out List<int> startKeys, out List<int> endKeys)
+    // {
+    //   bool inACourse = false;
+    //   bool cutFound = false;
+    //   bool inTransit = false;
+    //   startKeys = new List<int>();
+    //   endKeys = new List<int>();
+    //   for (int i = 0; i < lines.Count; i++)
+    //   {
+    //     string line = lines[i];
+    //     if (line.Contains("COURSE"))
+    //     {
+    //       cutFound = true;
+    //     }        
+    //   }
+    // }
+
     public static List<string> massageTransferLines(List<string> lines)
     {
       List<string> result = new List<string>();
@@ -34,7 +51,7 @@ namespace GCodeParser
           startTransits.Add(i);
         }
 
-        if( lines[i].Contains(endTransit))
+        if (lines[i].Contains(endTransit))
         {
           endTransits.Add(i);
         }
@@ -65,7 +82,7 @@ namespace GCodeParser
 
             if (!gotSkipExit)
             {
-              if(line.Contains("SKIP_EXIT"))
+              if (line.Contains("SKIP_EXIT"))
               {
                 gotSkipExit = true;
               }
@@ -78,7 +95,7 @@ namespace GCodeParser
             {
               ConvertProgram.getMotionArguments(fieldRegex, line, out Uarg, out Pose, true);
 
-              if (!gotFirstTransitLine )
+              if (!gotFirstTransitLine)
               {
                 if (Math.Sqrt(Pose.Y * Pose.Y + Pose.Z * Pose.Z) > 195)
                 {
@@ -95,7 +112,7 @@ namespace GCodeParser
                 endU = Uarg;
                 endTransitPose = previousPose;
                 range.RemoveAt(j);
-                var transitPath = ConvertProgram.GeneratePath(startTransitPose, endTransitPose, startU, Uarg, (int)Math.Abs(endU - startU)/5); //use the last Uarg because of the hiccup. 
+                var transitPath = ConvertProgram.GeneratePath(startTransitPose, endTransitPose, startU, Uarg, (int)Math.Abs(endU - startU) / 5); //use the last Uarg because of the hiccup. 
                 for (int k = 0; k < transitPath.angles.Count; k++)
                 {
                   cPose transitPose = transitPath.poses[k];
@@ -112,7 +129,7 @@ namespace GCodeParser
 
                 break;
               }
-              previousPose = Pose; 
+              previousPose = Pose;
             }
           }
         }
@@ -123,7 +140,7 @@ namespace GCodeParser
           result.InsertRange(startTransits[i], newTransits[i]);
         }
       }
-      return result;    
+      return result;
     }
   }
 }

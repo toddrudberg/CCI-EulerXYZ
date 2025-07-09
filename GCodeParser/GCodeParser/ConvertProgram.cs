@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.Eventing.Reader;
 using System.Linq;
+using System.Reflection.Metadata.Ecma335;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -12,11 +13,108 @@ namespace GCodeParser
 {
   internal class ConvertProgram
   {
+
+    public static List<string> cleanUpBasics(List<string> lines)
+    {
+      List<string> result = new List<string>();
+      Electroimpact.FileParser.cFileParse fp = new Electroimpact.FileParser.cFileParse();
+
+      int processNum = 0;
+      int courseNum = -1;
+      double lastDist = 0;
+      double darg = 0;
+      foreach (string line in lines)
+      {
+        switch (processNum)
+        {
+          case 0:  // wait for course number
+
+            result.Add(line);
+            if (line.Contains("SKIP_RESTART") && fp.TryGetArgument(line, "COURSE_NUM=", ref darg))
+            {
+              courseNum = (int)darg;
+              //Console.WriteLine($"Found course number: {courseNum}");
+              processNum++;
+            }
+            break;
+          case 1: // wait for DIST= argument - you're at the start of a course
+            result.Add(line);
+            if (fp.TryGetArgument(line, "DIST=", ref darg))
+            {
+              //Console.WriteLine($"Found DIST= argument: {darg}");
+              lastDist = darg;
+              processNum++;
+            }
+            break;
+          case 2: // wait for cut command, you're nearing the end of a course.
+            if (line.Contains("cut"))
+            {
+              //Console.WriteLine($"Found cut command in course {courseNum}.");
+              result.Add(line);
+              processNum++;
+            }
+            else
+            {
+              CheckIfMissingDISTCommand(line, result, ref lastDist);
+              
+            }
+            break;
+          case 3: // wait for G9 to indicate last move of the course. you've reached the end of this course.
+            if (line.Contains("G9"))
+            {
+              //Console.WriteLine($"Found G9 command in course {courseNum}.");
+              result.Add(line);
+              processNum = 0;
+            }
+            else
+            {
+              CheckIfMissingDISTCommand(line, result, ref lastDist);
+            }
+            break;
+        }        
+      }
+      return result;
+    }
+
+    private static void CheckIfMissingDISTCommand(string line, List<string> result, ref double lastDist)
+    {
+      double darg = 0;
+      Electroimpact.FileParser.cFileParse fp = new Electroimpact.FileParser.cFileParse();
+      if (fp.TryGetArgument(line, "G", ref darg))
+      {
+        if ((int)darg == 1 || (int)darg == 9)
+        {
+          if (line.Contains("DIST="))
+          {
+            fp.TryGetArgument(line, "DIST=", ref darg);
+            if (darg - lastDist > 4.0)
+            { 
+              lastDist = darg;
+              result.Add(line);
+            }
+          }
+        }
+        else
+        {
+          result.Add(line);
+        }
+      }
+      else
+      {
+        result.Add(line);
+      }
+
+      return;
+    }
+
     public static void ConvertAProgram(string inputFile, string outputFile)
     {
       Console.WriteLine($"Converting {inputFile} to {outputFile} in rXrYrZ format.");
 
       string[] lines = File.ReadAllLines(inputFile);
+
+      lines = cleanUpBasics(lines.ToList()).ToArray();
+
 
       var g1Regex = new Regex(@"G1\s+.*", RegexOptions.Compiled);
       var g9Regex = new Regex(@"G9\s+.*", RegexOptions.Compiled);
@@ -30,41 +128,44 @@ namespace GCodeParser
         if (line.Contains("APPROACH_ROTX"))
         {
           var safeStartEnd = ProcessSafeMoveCommand(line);
-          List<string> SafeMoves = insertSafeMove(safeStartEnd.Target, safeStartEnd.TargetU);
+
+          //Uncomment to use our safemove.  Use insertEulerXYZCodes, to use their safe move and afterwords set ORIYP2
+          //List<string> SafeMoves = insertSafeMove(safeStartEnd.Target, safeStartEnd.TargetU);
+          List<string> SafeMoves = insertEulerXYZCodes(line);
           for (int i = 0; i < SafeMoves.Count; i++)
           {
             outputLines.Add(SafeMoves[i]);
           }
-          for (int nLookAhead = nline + 1; nLookAhead < lines.Length; nLookAhead++)
-          {
-            if (g1Regex.IsMatch(lines[nLookAhead]))
-            {
-              double Uarg;
-              cPose endpose;
-              getMotionArguments(fieldRegex, lines[nLookAhead], out Uarg, out endpose);
-              cLHT endlhtPose = new cLHT();
-              endlhtPose.setTransformFromEulerZYX(endpose);
-              cLHT Ucmd = new cLHT(0, 0, 0, -Uarg.D2R(), 0, 0);
-              cPose endcartesianPose = (Ucmd * endlhtPose).getPoseEulerXYZ();
-              // now drop the safe move lines
+          //for (int nLookAhead = nline + 1; nLookAhead < lines.Length; nLookAhead++)
+          //{
+          //  if (g1Regex.IsMatch(lines[nLookAhead]))
+          //  {
+          //    double Uarg;
+          //    cPose endpose;
+          //    getMotionArguments(fieldRegex, lines[nLookAhead], out Uarg, out endpose);
+          //    cLHT endlhtPose = new cLHT();
+          //    endlhtPose.setTransformFromEulerZYX(endpose);
+          //    cLHT Ucmd = new cLHT(0, 0, 0, -Uarg.D2R(), 0, 0);
+          //    cPose endcartesianPose = (Ucmd * endlhtPose).getPoseEulerXYZ();
+          //    // now drop the safe move lines
 
-              //this is broken.  We are expecting Euler rx ry rz, with the rotation built in.  then we undo the rotation in GeneratePath, generate the path, and then apply the rotation again.
-              var (poses, angles) = GeneratePath(safeStartEnd.Target, endpose, safeStartEnd.TargetU, Uarg, (int)(Uarg - safeStartEnd.TargetU));
+          //    //this is broken.  We are expecting Euler rx ry rz, with the rotation built in.  then we undo the rotation in GeneratePath, generate the path, and then apply the rotation again.
+          //    var (poses, angles) = GeneratePath(safeStartEnd.Target, endpose, safeStartEnd.TargetU, Uarg, (int)(Uarg - safeStartEnd.TargetU));
               
-              for (int i = 0; i < poses.Count; i++)
-              {
-                cTransform ROTX = new cTransform(0, 0, 0, angles[i], 0, 0);
-                cPose poseZYX;
+          //    for (int i = 0; i < poses.Count; i++)
+          //    {
+          //      cTransform ROTX = new cTransform(0, 0, 0, angles[i], 0, 0);
+          //      cPose poseZYX;
 
-                poseZYX = (ROTX.getLHT() * poses[i].getLHT()).getPoseEulerXYZ();
-                string poseString = $"X={poseZYX.x:F3} Y={poseZYX.y:F3} Z={poseZYX.z:F3} RZ={poseZYX.rx:F3} RY={poseZYX.ry:F3} RX={poseZYX.rz:F3} ROTX=DC({angles[i].m180p180():F3})";
-                outputLines.Add(poseString);
-              }
+          //      poseZYX = (ROTX.getLHT() * poses[i].getLHT()).getPoseEulerXYZ();
+          //      string poseString = $"X={poseZYX.x:F3} Y={poseZYX.y:F3} Z={poseZYX.z:F3} RZ={poseZYX.rx:F3} RY={poseZYX.ry:F3} RX={poseZYX.rz:F3} ROTX=DC({angles[i].m180p180():F3})";
+          //      outputLines.Add(poseString);
+          //    }
 
-              break;
-            }
+          //    break;
+          //  }
 
-          }
+          //}
 
 
           continue;
@@ -73,7 +174,7 @@ namespace GCodeParser
         bool isG9 = g9Regex.IsMatch(line);
         if (isG9)
         {
-          Console.WriteLine("got g9");
+          //Console.WriteLine("got g9");
         }
         if (!(isG1 || isG9))
         {
@@ -93,20 +194,25 @@ namespace GCodeParser
         cPose pose;
         double W;
         getMotionArguments(fieldRegex, line, out W, out pose);
+        Electroimpact.FileParser.cFileParse fp = new Electroimpact.FileParser.cFileParse();
+        double distArg;
+        bool gotDistArg = fp.GetArgument(line, "DIST=", out distArg, true);
+        string distString = gotDistArg ? $"DIST={distArg:F3}" : "";
+        //Console.WriteLine($"DIST={distArg:0.000}");
         cLHT lhtPose = new cLHT();
         lhtPose.setTransformFromEulerZYX(pose);
         cLHT Wcmd = new cLHT(0, 0, 0, -W.D2R(), 0, 0);
         //cPose cartesianPose = (Wcmd * lhtPose).getPoseEulerXYZ();
         cPose cartesianPose = lhtPose.getPoseEulerXYZ();
-        Console.WriteLine($"X: {cartesianPose.X:0.000} Y: {cartesianPose.Y:0.000} Z: {cartesianPose.Z:0.000} RZ: {cartesianPose.rX:0.000} RY: {cartesianPose.rY:0.000} RX: {cartesianPose.rZ:0.000} ROTX: {W:0.000}".Pastel(Color.Green));
+        //Console.WriteLine($"X: {cartesianPose.X:0.000} Y: {cartesianPose.Y:0.000} Z: {cartesianPose.Z:0.000} RZ: {cartesianPose.rX:0.000} RY: {cartesianPose.rY:0.000} RX: {cartesianPose.rZ:0.000} ROTX: {W:0.000}".Pastel(Color.Green));
 
         // Create the output line        
         string outputLineType = isG1 ? "G1" : "G9";
-        string outputLine = $"N{nValue} {outputLineType} X={cartesianPose.X:0.000} Y={cartesianPose.Y:0.000} Z={cartesianPose.Z:0.000} RZ={cartesianPose.rX:0.000} RY={cartesianPose.rY:0.000} RX={cartesianPose.rZ:0.000} ROTX=DC({W:0.000})";
+        string outputLine = $"N{nValue} {outputLineType} X={cartesianPose.X:0.000} Y={cartesianPose.Y:0.000} Z={cartesianPose.Z:0.000} RZ={cartesianPose.rX:0.000} RY={cartesianPose.rY:0.000} RX={cartesianPose.rZ:0.000} ROTX=DC({W:0.000}) {distString}";
         outputLines.Add(outputLine);
       }
 
-      outputLines = createTransferLines.massageTransferLines(outputLines);
+      //outputLines = createTransferLines.massageTransferLines(outputLines);
 
 
       if (outputLines.Count > 0)
@@ -176,8 +282,8 @@ namespace GCodeParser
                          .ToList();
 
         // Example: print them
-        foreach (var number in numbers)
-          Console.WriteLine(number);
+        // foreach (var number in numbers)
+        //   Console.WriteLine(number);
 
 
         double startX = numbers[0];
@@ -197,6 +303,15 @@ namespace GCodeParser
         Console.WriteLine("No match found.");
         return (new cPose(), 0);
       }
+    }
+
+    public static List<string> insertEulerXYZCodes(string line)
+    {
+      List<string> result = new List<string>();
+      result.Add(line);
+      result.Add("ORIRPY2");
+      result.Add("M0");
+      return result;
     }
     public static List<string> insertSafeMove(cPose Target, double TargetRotX)
     {

@@ -33,6 +33,7 @@
       button3 = new Button();
       button4 = new Button();
       btnConvertAProgram = new Button();
+      button5 = new Button();
       SuspendLayout();
       // 
       // button1
@@ -90,11 +91,23 @@
       btnConvertAProgram.UseVisualStyleBackColor = true;
       btnConvertAProgram.Click += btnConvertAProgram_Click;
       // 
+      // button5
+      // 
+      button5.Location = new Point(503, 502);
+      button5.Margin = new Padding(7, 8, 7, 8);
+      button5.Name = "button5";
+      button5.Size = new Size(457, 63);
+      button5.TabIndex = 5;
+      button5.Text = "Extract APPROACH_ROTX";
+      button5.UseVisualStyleBackColor = true;
+      button5.Click += button5_Click;
+      // 
       // frmMain
       // 
       AutoScaleDimensions = new SizeF(17F, 41F);
       AutoScaleMode = AutoScaleMode.Font;
       ClientSize = new Size(1943, 1230);
+      Controls.Add(button5);
       Controls.Add(btnConvertAProgram);
       Controls.Add(button4);
       Controls.Add(button3);
@@ -114,5 +127,6 @@
     private Button button3;
     private Button button4;
     private Button btnConvertAProgram;
+    private Button button5;
   }
 }
