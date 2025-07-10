@@ -68,7 +68,7 @@ SAFE_RADIUS_ENTRY_XYZ(XSAFE, YSAFE, ZSAFE, RZSAFE, RYSAFE, RXSAFE, ROTXSAFE) ; [
 XMID = XSAFE                  ; [Logic] Midpoint initialization
 YMID = YSAFE
 ZMID = ZSAFE
-SAFE_RADIUS_MIDPOINT(XMID, YMID, ZMID) ; [User] Adjust midpoint height
+SAFE_RADIUS_MIDPOINT_XYZ(XMID, YMID, ZMID) ; [User] Adjust midpoint height
 RZMID = 0.5*RZSAFE            ; [Logic] Interpolated mid-rotation
 RYMID = 0.5*RYSAFE
 RXMID = 0.5*RXSAFE
