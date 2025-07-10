@@ -902,6 +902,24 @@ namespace GCodeParser
 
     }
 
+    private void btnSparCorner_Click(object sender, EventArgs e)
+    {
+      OpenFileDialog ofd = new OpenFileDialog();
+      ofd.Filter = "GCode files (*.mpf)|*.mpf|All files (*.*)|*.*";
+      ofd.Title = "Select GCode File";
 
+      if (ofd.ShowDialog() != DialogResult.OK)
+      {
+        MessageBox.Show("No file selected.");
+        return;
+      }
+
+      // Write the output lines to a new file
+      string directory = Path.GetDirectoryName(ofd.FileName);
+      string filenameWithoutExt = Path.GetFileNameWithoutExtension(ofd.FileName);
+      string outputFileName = Path.Combine(directory, filenameWithoutExt + "_spar.mpf");
+
+      ConvertProgram.sparTreatment(ofd.FileName, outputFileName);
+    }
   }
 }

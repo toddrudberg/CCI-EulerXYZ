@@ -1,4 +1,5 @@
-﻿using Pastel;
+﻿using Electroimpact.FileParser;
+using Pastel;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.Eventing.Reader;
@@ -267,6 +268,68 @@ namespace GCodeParser
       //pose = setLHT.getPoseEulerXYZ();
       uArg = values[6];
     }
+
+    public static void sparTreatment(string filein, string fileout, double minSpacing = 1.9)
+    {
+      Console.WriteLine($"Converting {filein} to {fileout} to insert pauses at inflections.");
+      string[] lines = File.ReadAllLines(filein);
+      List<string> outputLines = new List<string>();
+
+      int state = 0;
+      double distLast = 0;
+
+      bool ShouldCopyLine(string line, ref double distLast)
+      {
+        if (!line.Contains("G1"))
+          return true;
+
+        var fp = new Electroimpact.FileParser.cFileParse();
+        if (fp.GetArgument(line, "DIST=", out double darg, true))
+        {
+          if (darg - distLast > minSpacing)
+          {
+            distLast = darg;
+            return true;
+          }
+          return false;
+        }
+
+        return true;
+      }
+
+      foreach (string line in lines)
+      {
+        bool copyLine = true;
+
+        switch (state)
+        {
+          case 0:
+            if (line.Contains("FEED"))
+              state++;
+            break;
+
+          case 1:
+            if (line.Contains("cut"))
+              state++;
+            copyLine = ShouldCopyLine(line, ref distLast);
+            break;
+
+          case 2:
+            if (line.Contains("UV(0)"))
+              state = 0;
+            copyLine = ShouldCopyLine(line, ref distLast);
+            break;
+        }
+
+        if (copyLine)
+          outputLines.Add(line);
+        //else
+        //  outputLines.Add("; " + line); // Comment out the line if it doesn't meet the criteria
+      }
+
+      File.WriteAllLines(fileout, outputLines);
+    }
+
 
     public static (cPose Target, double TargetU) ProcessSafeMoveCommand(string line)
     {
