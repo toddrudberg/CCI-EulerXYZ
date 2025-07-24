@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Diagnostics.Eventing.Reader;
 using System.Linq;
 using System.Reflection.Metadata.Ecma335;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -461,6 +462,87 @@ namespace GCodeParser
       }
 
       return (poses, angles);
+    }
+
+
+    public class cMotionArguments
+    {       
+      public double X { get; set; }
+      public double Y { get; set; }
+      public double Z { get; set; }
+      public double RZ { get; set; }
+      public double RY { get; set; }
+      public double RX { get; set; }
+      public double ROTX { get; set; } // DC value
+      public double DIST { get; set; } // Distance argument
+      public double N { get; set; } // N value, if needed
+
+      public static cMotionArguments getMotionArguments(string line)
+      {
+        Electroimpact.FileParser.cFileParse fp = new Electroimpact.FileParser.cFileParse();
+        cMotionArguments args = new cMotionArguments();
+        fp.GetArgument(line, "X=", out double X, true);
+        fp.GetArgument(line, "Y=", out double Y, true);
+        fp.GetArgument(line, "Z=", out double Z, true);
+        fp.GetArgument(line, "RZ=", out double RZ, true);
+        fp.GetArgument(line, "RY=", out double RY, true);
+        fp.GetArgument(line, "RX=", out double RX, true);
+        fp.GetArgument(line, "ROTX=DC(", out double ROTX, false);
+        fp.GetArgument(line, "DIST=", out double DIST, false);
+        fp.GetArgument(line, "N", out double N, false); // Optional N value
+
+        args.X = X;
+        args.Y = Y;
+        args.Z = Z;
+        args.RZ = RZ;
+        args.RY = RY;
+        args.RX = RX;
+        args.ROTX = ROTX;
+        args.N = N; // Set N value if it exists
+        args.DIST = DIST;
+
+        return args;
+      }
+    }
+    internal static void rotXBasedOnYZ(string fileName, string outputFileName)
+    {
+      Electroimpact.FileParser.cFileParse fp = new Electroimpact.FileParser.cFileParse();
+      Console.WriteLine("ROTX,ROTYZ,DeltaROTX,C,N");
+      List<string> output = new List<string>();
+      output.Add("ROTX,ROTYZ,DeltaROTX,C,N");
+      int state = 0;
+      foreach (string line in File.ReadAllLines(fileName))
+      {
+        bool copyLine = true;
+
+        switch (state)
+        {
+          case 0:
+            if (line.Contains("FEED"))
+              state++;
+            break;
+
+          case 1:
+            if (line.Contains("cut"))
+              state++;
+            break;
+
+          case 2:
+            if (line.Contains("UV(0)"))
+              state = 0;
+            break;
+        }
+        if (state > 0 && (line.Contains("G1") || line.Contains("G9")))
+        {
+          cMotionArguments args = cMotionArguments.getMotionArguments(line);
+          double rotX = -Math.Atan2(args.Y, args.Z).R2D(); // Calculate ROTX based on Y and Z
+          //Console.WriteLine($"{args.ROTX:F3} -->> {rotX:F3} dRX: {(args.ROTX - rotX):F3}");
+          Console.WriteLine($"{args.ROTX:F3},{rotX:F3},{(args.ROTX - rotX).m180p180():F3},{args.RX},{args.N:F0}");
+          output.Add($"{args.ROTX:F3},{rotX:F3},{(args.ROTX - rotX).m180p180():F3},{args.RX},{args.N:F0}");
+        }
+      }
+      string text = string.Join(Environment.NewLine, output);
+      Clipboard.SetText(text);
     }
   }
 }

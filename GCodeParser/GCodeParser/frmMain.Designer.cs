@@ -35,6 +35,7 @@
       btnConvertAProgram = new Button();
       button5 = new Button();
       btnSparCorner = new Button();
+      btnRotXBasedOnYZ = new Button();
       SuspendLayout();
       // 
       // button1
@@ -107,11 +108,22 @@
       btnSparCorner.UseVisualStyleBackColor = true;
       btnSparCorner.Click += btnSparCorner_Click;
       // 
+      // btnRotXBasedOnYZ
+      // 
+      btnRotXBasedOnYZ.Location = new Point(207, 242);
+      btnRotXBasedOnYZ.Name = "btnRotXBasedOnYZ";
+      btnRotXBasedOnYZ.Size = new Size(188, 23);
+      btnRotXBasedOnYZ.TabIndex = 7;
+      btnRotXBasedOnYZ.Text = "RotX ATAN(YZ)";
+      btnRotXBasedOnYZ.UseVisualStyleBackColor = true;
+      btnRotXBasedOnYZ.Click += btnRotXBasedOnYZ_Click;
+      // 
       // frmMain
       // 
       AutoScaleDimensions = new SizeF(7F, 15F);
       AutoScaleMode = AutoScaleMode.Font;
       ClientSize = new Size(800, 450);
+      Controls.Add(btnRotXBasedOnYZ);
       Controls.Add(btnSparCorner);
       Controls.Add(button5);
       Controls.Add(btnConvertAProgram);
@@ -134,5 +146,6 @@
     private Button btnConvertAProgram;
     private Button button5;
     private Button btnSparCorner;
+    private Button btnRotXBasedOnYZ;
   }
 }

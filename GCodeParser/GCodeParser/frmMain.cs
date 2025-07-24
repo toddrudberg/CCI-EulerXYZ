@@ -877,7 +877,7 @@ namespace GCodeParser
       var seenROTX = new HashSet<string>(); // Using string to avoid float precision fuzz
       foreach (var line in lines)
       {
-        if (!line.Contains("APPROACH_ROTX_V2(")) continue;
+        if (!line.Contains("APPROACH_ROTX_XYZ(")) continue;
 
         var start = line.IndexOf('(');
         var end = line.IndexOf(')');
@@ -894,7 +894,8 @@ namespace GCodeParser
           var key = rotx.ToString("F3"); // Format to 3 decimal places
           if (seenROTX.Add(key))
           {
-            Console.WriteLine(line); // Unique ROTX value
+            Console.WriteLine(line);
+            //Console.WriteLine("RETRACT_XYZ");
           }
         }
       }
@@ -920,6 +921,24 @@ namespace GCodeParser
       string outputFileName = Path.Combine(directory, filenameWithoutExt + "_spar.mpf");
 
       ConvertProgram.sparTreatment(ofd.FileName, outputFileName);
+    }
+
+    private void btnRotXBasedOnYZ_Click(object sender, EventArgs e)
+    { //"C:\Users\trudberg\Downloads\HG2_SS_v06.mpf"
+      OpenFileDialog ofd = new OpenFileDialog();
+      ofd.Filter = "GCode files (*.mpf)|*.mpf|All files (*.*)|*.*";
+      ofd.Title = "Select GCode File";
+      if (ofd.ShowDialog() != DialogResult.OK)
+      {
+        MessageBox.Show("No file selected.");
+        return;
+      }
+      // Write the output lines to a new file
+      string directory = Path.GetDirectoryName(ofd.FileName);
+      string filenameWithoutExt = Path.GetFileNameWithoutExtension(ofd.FileName);
+      string outputFileName = Path.Combine(directory, filenameWithoutExt + "_rotx.mpf");
+      ConvertProgram.rotXBasedOnYZ(ofd.FileName, outputFileName);
+
     }
   }
 }
