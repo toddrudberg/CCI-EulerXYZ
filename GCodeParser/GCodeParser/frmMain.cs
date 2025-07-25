@@ -940,5 +940,25 @@ namespace GCodeParser
       ConvertProgram.rotXBasedOnYZ(ofd.FileName, outputFileName);
 
     }
+
+    private void button6_Click(object sender, EventArgs e)
+    {
+      this.Enabled = false;
+      double ROTXoffset = -30;
+      OpenFileDialog ofd = new OpenFileDialog();
+      ofd.Filter = "GCode files (*.mpf)|*.mpf|All files (*.*)|*.*";
+      ofd.Title = "Select GCode File";
+      if (ofd.ShowDialog() != DialogResult.OK)
+      {
+        MessageBox.Show("No file selected.");
+        return;
+      }
+      // Write the output lines to a new file
+      string directory = Path.GetDirectoryName(ofd.FileName);
+      string filenameWithoutExt = Path.GetFileNameWithoutExtension(ofd.FileName);
+      string outputFileName = Path.Combine(directory, filenameWithoutExt + "_rotx.mpf");
+      ConvertProgram.rotXStrategies2(ofd.FileName, outputFileName, ROTXoffset);
+      this.Enabled = true;
+    }
   }
 }

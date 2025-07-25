@@ -36,6 +36,7 @@
       button5 = new Button();
       btnSparCorner = new Button();
       btnRotXBasedOnYZ = new Button();
+      button6 = new Button();
       SuspendLayout();
       // 
       // button1
@@ -118,11 +119,22 @@
       btnRotXBasedOnYZ.UseVisualStyleBackColor = true;
       btnRotXBasedOnYZ.Click += btnRotXBasedOnYZ_Click;
       // 
+      // button6
+      // 
+      button6.Location = new Point(207, 271);
+      button6.Name = "button6";
+      button6.Size = new Size(188, 23);
+      button6.TabIndex = 8;
+      button6.Text = "RotX Strategies";
+      button6.UseVisualStyleBackColor = true;
+      button6.Click += button6_Click;
+      // 
       // frmMain
       // 
       AutoScaleDimensions = new SizeF(7F, 15F);
       AutoScaleMode = AutoScaleMode.Font;
       ClientSize = new Size(800, 450);
+      Controls.Add(button6);
       Controls.Add(btnRotXBasedOnYZ);
       Controls.Add(btnSparCorner);
       Controls.Add(button5);
@@ -147,5 +159,6 @@
     private Button button5;
     private Button btnSparCorner;
     private Button btnRotXBasedOnYZ;
+    private Button button6;
   }
 }

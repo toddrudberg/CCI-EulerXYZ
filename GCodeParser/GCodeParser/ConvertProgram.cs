@@ -58,7 +58,7 @@ namespace GCodeParser
             else
             {
               CheckIfMissingDISTCommand(line, result, ref lastDist);
-              
+
             }
             break;
           case 3: // wait for G9 to indicate last move of the course. you've reached the end of this course.
@@ -73,7 +73,7 @@ namespace GCodeParser
               CheckIfMissingDISTCommand(line, result, ref lastDist);
             }
             break;
-        }        
+        }
       }
       return result;
     }
@@ -90,7 +90,7 @@ namespace GCodeParser
           {
             fp.TryGetArgument(line, "DIST=", ref darg);
             if (darg - lastDist > 4.0)
-            { 
+            {
               lastDist = darg;
               result.Add(line);
             }
@@ -153,7 +153,7 @@ namespace GCodeParser
 
           //    //this is broken.  We are expecting Euler rx ry rz, with the rotation built in.  then we undo the rotation in GeneratePath, generate the path, and then apply the rotation again.
           //    var (poses, angles) = GeneratePath(safeStartEnd.Target, endpose, safeStartEnd.TargetU, Uarg, (int)(Uarg - safeStartEnd.TargetU));
-              
+
           //    for (int i = 0; i < poses.Count; i++)
           //    {
           //      cTransform ROTX = new cTransform(0, 0, 0, angles[i], 0, 0);
@@ -245,7 +245,7 @@ namespace GCodeParser
         }
       }
 
-      
+
 
       pose = new cPose
       {
@@ -257,7 +257,7 @@ namespace GCodeParser
         rx = values[5]
       };
 
-      if( orderIsXYZ)
+      if (orderIsXYZ)
       {
         double temp = pose.rx;
         pose.rx = pose.rz;
@@ -434,7 +434,7 @@ namespace GCodeParser
         return a + (b - a) * t;
       }
       cTransform uStart = new cTransform(0, 0, 0, -startAngle, 0, 0);
-      cTransform uEnd = new cTransform(0,0,0, -endAngle, 0, 0);
+      cTransform uEnd = new cTransform(0, 0, 0, -endAngle, 0, 0);
       startPose = (uStart.getLHT() * startPose.getLHT()).getPoseEulerXYZ();
       endPose = (uEnd.getLHT() * endPose.getLHT()).getPoseEulerXYZ();
 
@@ -455,7 +455,7 @@ namespace GCodeParser
         angles.Add(angle);
       }
 
-      for(int i = 0; i < poses.Count; i++)
+      for (int i = 0; i < poses.Count; i++)
       {
         cTransform rotx = new cTransform(0, 0, 0, angles[i], 0, 0);
         poses[i] = (rotx.getLHT() * poses[i].getLHT()).getPoseEulerXYZ();
@@ -466,7 +466,7 @@ namespace GCodeParser
 
 
     public class cMotionArguments
-    {       
+    {
       public double X { get; set; }
       public double Y { get; set; }
       public double Z { get; set; }
@@ -503,7 +503,50 @@ namespace GCodeParser
 
         return args;
       }
+
+      public static cMotionArguments getAPPROACH_ROTX_ARGUMENTS(string line)
+      {
+        cMotionArguments output = new();
+
+        int start = line.IndexOf('(');
+        int end = line.IndexOf(')');
+
+        if (start == -1 || end == -1 || end <= start)
+          return output; // return empty if format is bad
+
+        string args = line.Substring(start + 1, end - start - 1);
+
+        string[] parts = args.Split(',');
+
+        List<double> values = new List<double>();
+        foreach (string part in parts)
+        {
+          if (double.TryParse(part.Trim(), out double val))
+          {
+            values.Add(val);
+          }
+        }
+
+        output.X = values[0];
+        output.Y = values[1];
+        output.Z = values[2];
+        output.RX = values[3];
+        output.RY = values[4];
+        output.RZ = values[5];
+        output.ROTX = values[6];
+        output.DIST = values[7];
+
+        Electroimpact.FileParser.cFileParse fp = new();
+        fp.GetArgument(line, "N", out double N, false); // Optional N value
+        output.N = (int)N;
+
+
+        return output;
+
+      }
     }
+
+
     internal static void rotXBasedOnYZ(string fileName, string outputFileName)
     {
       Electroimpact.FileParser.cFileParse fp = new Electroimpact.FileParser.cFileParse();
@@ -543,6 +586,122 @@ namespace GCodeParser
       }
       string text = string.Join(Environment.NewLine, output);
       Clipboard.SetText(text);
+    }
+
+    internal static void rotXStrategies(string fileName, string outputFileName, double ROTXOffset)
+    {
+      Electroimpact.FileParser.cFileParse fp = new Electroimpact.FileParser.cFileParse();
+      Console.WriteLine("ROTX,ROTYZ,DeltaROTX,C,N");
+      List<string> output = new List<string>();
+      output.Add("ROTX,ROTYZ,DeltaROTX,C,N");
+      int state = 0;
+      foreach (string line in File.ReadAllLines(fileName))
+      {
+        bool copyLine = true;
+
+        switch (state)
+        {
+          case 0:
+            if (line.Contains("FEED"))
+              state++;
+            break;
+
+          case 1:
+            if (line.Contains("cut"))
+              state++;
+            break;
+
+          case 2:
+            if (line.Contains("UV(0)"))
+              state = 0;
+            break;
+        }
+        if (state > 0 && (line.Contains("G1") || line.Contains("G9")))
+        {
+          cMotionArguments args = cMotionArguments.getMotionArguments(line);
+          double rotX = -Math.Atan2(args.Y, args.Z).R2D(); // Calculate ROTX based on Y and Z
+          double rotXWithOffset = (rotX + ROTXOffset).m180p180(); // Apply the offset
+          //Console.WriteLine($"{args.ROTX:F3} -->> {rotX:F3} dRX: {(args.ROTX - rotX):F3}");
+          //Console.WriteLine($"{args.ROTX:F3},{rotX:F3},{(args.ROTX - rotXWithOffset).m180p180():F3},{args.RX},{args.N:F0}");
+          output.Add($"{args.ROTX:F3},{rotX:F3},{(args.ROTX - rotXWithOffset).m180p180():F3},{args.RX},{args.N:F0}");
+        }
+      }
+      Console.WriteLine("Done!");
+      string text = string.Join(Environment.NewLine, output);
+      Clipboard.SetText(text);
+    }
+
+    internal static void rotXStrategies2(string fileName, string outputFileName, double ROTXOffset)
+    {
+      long count = 0;
+      Electroimpact.FileParser.cFileParse fp = new Electroimpact.FileParser.cFileParse();
+      List<string> output = new List<string>();
+
+      double calcROTX(cMotionArguments inputArgs)
+      {
+        double rotX = -Math.Atan2(inputArgs.Y, inputArgs.Z).R2D(); // Calculate ROTX based on Y and Z
+        double rotXWithOffset = (rotX + ROTXOffset).m180p180(); // Apply the offset
+        return rotXWithOffset;
+      }
+
+      string processGline(string line)
+      {
+        string output = "";
+        cMotionArguments args = cMotionArguments.getMotionArguments(line);
+        double newROTX = calcROTX(args);
+        fp.ReplaceArgument(line, "ROTX=DC(", newROTX, out output);
+
+        return output;
+      }
+
+      string processAPPROCH_ROTX_line(string line)
+      {
+        string output = "";
+        cMotionArguments args = cMotionArguments.getAPPROACH_ROTX_ARGUMENTS(line);
+
+        double newROTX = calcROTX(args);
+        output = $"N{args.N} APPROACH_ROTX_XYZ({args.X:F3},{args.Y:F3},{args.Z:F3},{args.RX:F3},{args.RY:F3},{args.RZ:F3},{newROTX:F3},{args.DIST:F3})";
+
+        return output;
+      }
+
+      foreach (string line in File.ReadAllLines(fileName))
+      {
+        if (count % 1000 == 0)
+        {
+          Console.WriteLine($"Processing: {line}");
+        }
+        count++;
+
+        if (line.Contains("G1") || line.Contains("G9"))
+        {
+          string newline = processGline(line);
+          output.Add(newline);
+        }
+        else if (line.Contains("APPROACH_ROTX_XYZ"))
+        {
+          string newLine = processAPPROCH_ROTX_line(line);
+          output.Add(newLine);
+        }
+        else
+        {
+          output.Add(line);
+        }
+      }
+      Console.WriteLine("Done!");
+
+      //output the resutlts:
+      string text = string.Join(Environment.NewLine, output);
+      if (!string.IsNullOrEmpty(outputFileName))
+      {
+        File.WriteAllText(outputFileName, text);
+        Console.WriteLine($"Output written to {outputFileName}");
+      }
+      else
+      {
+        Clipboard.SetText(text);
+        Console.WriteLine("Output copied to clipboard.");
+      }
     }
   }
 }
