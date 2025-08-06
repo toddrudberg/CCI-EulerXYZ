@@ -1,0 +1,118 @@
+PROC APPROACH_ROTX_XYZ(REAL X_DEST, REAL Y_DEST, REAL Z_DEST, REAL RX_DEST, REAL RY_DEST, REAL RZ_DEST, REAL ROTX_DEST, REAL DIST_DEST) ; [Logic] Procedure definition
+
+;DEFINE VARIABLES
+DEF REAL Z_SAFE = 550.0       ; [Logic] Local constant
+DEF REAL Z_INITIAL = 100.0    ; [Logic] Local constant
+DEF REAL POS_Z1 = 0.0         ; [Logic] Local variable
+DEF REAL F_PTP = 2000.0       ; [Logic] Feedrate for point-to-point motion
+DEF REAL F_CP = 6000.0        ; [Logic] Feedrate for Cartesian path motion
+DEF REAL F_ROT = 4320.0       ; [Logic] Feedrate for ROTX axis
+DEF INT INITWOFF              ; [Logic] Local variable (not used in this snippet)
+DEF REAL ROTX_DIFF            ; [Logic] Local variable to store ROTX delta
+DEF FRAME FRAME_EXTRA         ; [Logic] Local transformation frame
+DEF REAL X_EXTRA              ; [Logic] Transformed intermediate X value
+DEF REAL Y_EXTRA              ; [Logic] Transformed intermediate Y value
+DEF REAL Z_EXTRA              ; [Logic] Transformed intermediate Z value
+DEF REAL RX_EXTRA             ; [Logic] Transformed RZ
+DEF REAL RY_EXTRA             ; [Logic] Transformed RY
+DEF REAL RZ_EXTRA             ; [Logic] Transformed RX
+
+;DEFINE IN/OUT VARIABLES
+DEF REAL XSAFE                ; [Logic] Intermediate safe position vars
+DEF REAL YSAFE
+DEF REAL ZSAFE
+DEF REAL RZSAFE
+DEF REAL RYSAFE
+DEF REAL RXSAFE
+DEF REAL ROTXSAFE
+
+DEF REAL XMID                 ; [Logic] Midpoint motion vars
+DEF REAL YMID
+DEF REAL ZMID
+DEF REAL RZMID
+DEF REAL RYMID
+DEF REAL RXMID
+
+;INITIALIZE IN/OUT VARIABLES
+XSAFE = X_DEST                ; [Logic] Variable assignments
+YSAFE = Y_DEST
+ZSAFE = Z_DEST
+RXSAFE = RX_DEST
+RYSAFE = RY_DEST
+RZSAFE = RZ_DEST
+ROTXSAFE = ROTX_DEST
+
+;BEGINNING OF MACRO
+M67                           ; [User] User-defined indicator (e.g., light, debug)
+STOPRE                        ; [Siemens] Stop rewind, safety pause
+G710                          ; [User] Custom setup G-code
+ROTX_TRAFO(0)                 ; [User] Disable ROTX transform
+STOPRE                        ; [Siemens]
+TRAORI                        ; [Siemens] Fix tool orientation during motion
+ORIRPY2                       ; [Siemens} Set orientation to Intrinsic YPR, OR XYZ]
+STOPRE                        ; [Siemens]
+PRESETONS(DIST,DIST_DEST)     ; [User] Assign preset or global variable
+;VELOLIM[ROTX]=98             ; [User] Optional speed limit (commented out)
+STOPRE                        ; [Siemens]
+
+;RETURN ROBOT TO HOME POSITION
+GOTO_PARK_XYZ                     ; [User] Move to safe/park position
+STOPRE                        ; [Siemens]
+HEAD_OFFSETS(DRYRUN_OFFSET)  ; [User] Apply offsets for dry run mode
+STOPRE                        ; [Siemens]
+
+;CALCULATE AND MOVE TO A SAFE APPROACH POSITION
+SAFE_RADIUS_ENTRY_XYZ(XSAFE, YSAFE, ZSAFE, RXSAFE, RYSAFE, RZSAFE, ROTXSAFE) ; [User] Compute safe fly-in point
+
+;CALCULATE MIDPOINT POSITION AND ROTATIONS
+XMID = XSAFE                  ; [Logic] Midpoint initialization
+YMID = YSAFE
+ZMID = ZSAFE
+SAFE_RADIUS_MIDPOINT_XYZ(XMID, YMID, ZMID) ; [User] Adjust midpoint height
+RZMID = 0.5*RZSAFE            ; [Logic] Interpolated mid-rotation
+RYMID = 0.5*RYSAFE
+RXMID = 0.5*RXSAFE
+STOPRE                        ; [Siemens]
+
+;SET ROTX AT INITIAL POSITION
+G1 POS[ROTX]=DC(ROTXSAFE) FA[ROTX]=F_ROT ; [Siemens] Set ROTX with direct control
+
+;MOVE TO INITIAL POSITION AT THE SAFE RADIUS
+CP G1 X=XMID Y=YMID Z=ZMID RX=RXMID RY=RYMID RZ=RZMID F=F_CP ; [Siemens] Midpoint move
+CP G1 X=XSAFE Y=YSAFE Z=ZSAFE RX=RXSAFE RY=RYSAFE RZ=RZSAFE F=F_CP ; [Siemens] Safe fly-in point
+
+;DETERMINE IF ADDITIONAL POINT REQUIRED IN PATH FROM ROTATOR TILT
+ROTX_DIFF = ROTXSAFE - ROTX_DEST    ; [Logic] Compute difference in tilt
+IF ABS(ROTX_DIFF) > 0.001           ; [Logic] Check if compensation is needed
+    ;IF TRUE, PART IS TILTED, AND ADDITIONAL INSERTED POINT IS REQUIRED
+    ;CREATE A COORDINATE SYSTEM AT THE APPROACH POINT
+    FRAME_EXTRA = CTRANS(X,X_DEST,Y,Y_DEST,Z,Z_DEST):CROT(X,RX_DEST):CROT(Y,RY_DEST):CROT(Z,RZ_DEST) ; [Siemens] Build XYZ-frame (YPR)
+    FRAME_EXTRA = CROT(X,-ROTX_DEST):CROT(X,-ROTX_DIFF):FRAME_EXTRA ; [Siemens] Add backward tilt rotation
+
+    X_EXTRA = FRAME_EXTRA[X,TR] + $MC_ROBX_EXT_ROT_BASE_OFFSET[0] ; [Siemens] Extract X translation
+    Y_EXTRA = FRAME_EXTRA[Y,TR] + $MC_ROBX_EXT_ROT_BASE_OFFSET[1]
+    Z_EXTRA = FRAME_EXTRA[Z,TR] + $MC_ROBX_EXT_ROT_BASE_OFFSET[2]
+    RX_EXTRA = FRAME_EXTRA[X,RT]   ; [Siemens] Extract Z-axis rotation
+    RY_EXTRA = FRAME_EXTRA[Y,RT]
+    RZ_EXTRA = FRAME_EXTRA[Z,RT]
+    STOPRE                        ; [Siemens]
+
+    ;UNCOMMENT FOLLOWING LINES TO DEBUG OUTPUTS
+    ;MSG(""<<X_EXTRA<<", "<<Y_EXTRA<<", "<<Z_EXTRA<<", "<<RX_EXTRA<<", "<<RY_EXTRA<<", "<<RZ_EXTRA<<"") ; [Siemens] Debug output
+    ;M0                            ; [Siemens] Optional manual pause
+    ;STOPRE                        ; [Siemens]
+
+    ;MOVE TO ADDITIONAL POINT, EQUIVALENT TO FLY-IN BUT WITH ROTX TILT
+    CP G1 X=X_EXTRA Y=Y_EXTRA Z=Z_EXTRA RZ=RX_EXTRA RY=RY_EXTRA RX=RZ_EXTRA F=F_CP ; [Siemens] Move to intermediate
+    STOPRE                        ; [Siemens]
+ENDIF
+
+;ACTIVATE 7-AXIS TRANSFORM WITH ROTX
+STOPRE                            ; [Siemens]
+ROTX_TRAFO(1)                     ; [User] Enable ROTX transform
+STOPRE                            ; [Siemens]
+
+;MOVE TO FINAL POSITION
+CP G1 X=X_DEST Y=Y_DEST Z=Z_DEST RX=RX_DEST RY=RY_DEST RZ=RZ_DEST F=F_CP ; [Siemens] Final approach move
+
+RET                               ; [Siemens] End of procedure

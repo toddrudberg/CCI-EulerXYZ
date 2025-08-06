@@ -1,5 +1,6 @@
 using Pastel;
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.Xml;
 using System.Text;
@@ -40,6 +41,21 @@ namespace GCodeParser
       this.StartPosition = FormStartPosition.Manual;
       this.Location = new System.Drawing.Point(screenWidth / 2, 0);
       this.Size = new System.Drawing.Size(screenWidth / 2, screenHeight / 2);
+
+
+
+      //Quick test:
+      //cPose testPose = new cPose(0, 0, 0, -180.0, 90.2, -90.0);
+      ////cPose testPose = new cPose(0, 0, 0, -90.0, 10, -180.0);
+      //Console.WriteLine($"Test Pose ZYX: X={testPose.X:0.000} Y={testPose.Y:0.000} Z={testPose.Z:0.000} RZ={testPose.rZ:0.000} RY={testPose.rY:0.000} RX={testPose.rX:0.000}".Pastel(Color.Green));
+      //cLHT test = new cLHT();
+      //test.setTransformFromEulerZYX(testPose);
+      //cPose testPoseEulerXYZ = test.getPoseEulerXYZ();
+      //Console.WriteLine($"Test Pose XYZ: X={testPoseEulerXYZ.X:0.000} Y={testPoseEulerXYZ.Y:0.000} Z={testPoseEulerXYZ.Z:0.000} RX={testPoseEulerXYZ.rX:0.000} RY={testPoseEulerXYZ.rY:0.000} RZ={testPoseEulerXYZ.rZ:0.000}".Pastel(Color.Green));
+      //test.setTransformFromEulerXYZ(testPoseEulerXYZ);
+      //cPose testBackTOZYX = test.getPoseEulerZYX();
+      //Console.WriteLine($"Test Back to ZYX: X={testBackTOZYX.X:0.000} Y={testBackTOZYX.Y:0.000} Z={testBackTOZYX.Z:0.000} RZ={testBackTOZYX.rZ:0.000} RY={testBackTOZYX.rY:0.000} RX={testBackTOZYX.rX:0.000}".Pastel(Color.Green));
+      //Console.WriteLine();
     }
     private void button3_Click(object sender, EventArgs e)
     {
@@ -812,7 +828,7 @@ namespace GCodeParser
       return (startPose, endPose, startU, endU);
     }
 
-    
+
 
     private void btnConvertAProgram_Click(object sender, EventArgs e)
     {
@@ -835,6 +851,133 @@ namespace GCodeParser
       ConvertProgram.ConvertAProgram(ofd.FileName, outputFileName);
 
 
+    }
+
+    private void button5_Click(object sender, EventArgs e)
+    {
+      OpenFileDialog ofd = new OpenFileDialog();
+      ofd.Filter = "GCode files (*.mpf)|*.mpf|All files (*.*)|*.*";
+      ofd.Title = "Select GCode File";
+
+      if (ofd.ShowDialog() != DialogResult.OK)
+      {
+        MessageBox.Show("No file selected.");
+        return;
+      }
+
+      string[] lines = File.ReadAllLines(ofd.FileName);
+      //foreach (var line in lines)
+      //{
+      //  if (line.Contains("APPROACH_ROTX_V2"))
+      //  {
+      //    Console.WriteLine(line.Pastel(Color.Green));
+      //  }
+      //}
+
+      var seenROTX = new HashSet<string>(); // Using string to avoid float precision fuzz
+      foreach (var line in lines)
+      {
+        if (!line.Contains("APPROACH_ROTX_XYZ(")) continue;
+
+        var start = line.IndexOf('(');
+        var end = line.IndexOf(')');
+        if (start < 0 || end < 0) continue;
+
+        var args = line.Substring(start + 1, end - start - 1).Split(',');
+
+        if (args.Length < 7) continue;
+
+        var rotxRaw = args[6].Trim();
+        // Round or normalize to 3 decimals to group near-matches
+        if (double.TryParse(rotxRaw, NumberStyles.Any, CultureInfo.InvariantCulture, out double rotx))
+        {
+          var key = rotx.ToString("F3"); // Format to 3 decimal places
+          if (seenROTX.Add(key))
+          {
+            Console.WriteLine(line);
+            //Console.WriteLine("RETRACT_XYZ");
+          }
+        }
+      }
+
+
+    }
+
+    private void btnSparCorner_Click(object sender, EventArgs e)
+    {
+      OpenFileDialog ofd = new OpenFileDialog();
+      ofd.Filter = "GCode files (*.mpf)|*.mpf|All files (*.*)|*.*";
+      ofd.Title = "Select GCode File";
+
+      if (ofd.ShowDialog() != DialogResult.OK)
+      {
+        MessageBox.Show("No file selected.");
+        return;
+      }
+
+      // Write the output lines to a new file
+      string directory = Path.GetDirectoryName(ofd.FileName);
+      string filenameWithoutExt = Path.GetFileNameWithoutExtension(ofd.FileName);
+      string outputFileName = Path.Combine(directory, filenameWithoutExt + "_spar.mpf");
+
+      ConvertProgram.sparTreatment(ofd.FileName, outputFileName);
+    }
+
+    private void btnRotXBasedOnYZ_Click(object sender, EventArgs e)
+    { //"C:\Users\trudberg\Downloads\HG2_SS_v06.mpf"
+      OpenFileDialog ofd = new OpenFileDialog();
+      ofd.Filter = "GCode files (*.mpf)|*.mpf|All files (*.*)|*.*";
+      ofd.Title = "Select GCode File";
+      if (ofd.ShowDialog() != DialogResult.OK)
+      {
+        MessageBox.Show("No file selected.");
+        return;
+      }
+      // Write the output lines to a new file
+      string directory = Path.GetDirectoryName(ofd.FileName);
+      string filenameWithoutExt = Path.GetFileNameWithoutExtension(ofd.FileName);
+      string outputFileName = Path.Combine(directory, filenameWithoutExt + "_rotx.mpf");
+      ConvertProgram.rotXBasedOnYZ(ofd.FileName, outputFileName);
+
+    }
+
+    private void button6_Click(object sender, EventArgs e)
+    {
+      this.Enabled = false;
+      double ROTXoffset = -30;
+      OpenFileDialog ofd = new OpenFileDialog();
+      ofd.Filter = "GCode files (*.mpf)|*.mpf|All files (*.*)|*.*";
+      ofd.Title = "Select GCode File";
+      if (ofd.ShowDialog() != DialogResult.OK)
+      {
+        MessageBox.Show("No file selected.");
+        return;
+      }
+      // Write the output lines to a new file
+      string directory = Path.GetDirectoryName(ofd.FileName);
+      string filenameWithoutExt = Path.GetFileNameWithoutExtension(ofd.FileName);
+      string outputFileName = Path.Combine(directory, filenameWithoutExt + "_rotx.mpf");
+      ConvertProgram.rotXStrategies2(ofd.FileName, outputFileName, ROTXoffset);
+      this.Enabled = true;
+    }
+
+    private void button7_Click(object sender, EventArgs e)
+    {
+      this.Enabled = false;
+      OpenFileDialog ofd = new OpenFileDialog();
+      ofd.Filter = "GCode files (*.mpf)|*.mpf|All files (*.*)|*.*";
+      ofd.Title = "Select GCode File";
+      if (ofd.ShowDialog() != DialogResult.OK)
+      {
+        MessageBox.Show("No file selected.");
+        return;
+      }
+      // Write the output lines to a new file
+      string directory = Path.GetDirectoryName(ofd.FileName);
+      string filenameWithoutExt = Path.GetFileNameWithoutExtension(ofd.FileName);
+      string outputFileName = Path.Combine(directory, filenameWithoutExt + "_rzrxflip.mpf");
+      ConvertProgram.fliprXrZ(ofd.FileName, outputFileName);
+      this.Enabled = true;
     }
   }
 }

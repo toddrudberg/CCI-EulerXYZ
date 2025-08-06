@@ -1,8 +1,11 @@
-﻿using Pastel;
+﻿using Electroimpact.FileParser;
+using Pastel;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.Eventing.Reader;
 using System.Linq;
+using System.Reflection.Metadata.Ecma335;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -12,11 +15,108 @@ namespace GCodeParser
 {
   internal class ConvertProgram
   {
+
+    public static List<string> cleanUpBasics(List<string> lines)
+    {
+      List<string> result = new List<string>();
+      Electroimpact.FileParser.cFileParse fp = new Electroimpact.FileParser.cFileParse();
+
+      int processNum = 0;
+      int courseNum = -1;
+      double lastDist = 0;
+      double darg = 0;
+      foreach (string line in lines)
+      {
+        switch (processNum)
+        {
+          case 0:  // wait for course number
+
+            result.Add(line);
+            if (line.Contains("SKIP_RESTART") && fp.TryGetArgument(line, "COURSE_NUM=", ref darg))
+            {
+              courseNum = (int)darg;
+              //Console.WriteLine($"Found course number: {courseNum}");
+              processNum++;
+            }
+            break;
+          case 1: // wait for DIST= argument - you're at the start of a course
+            result.Add(line);
+            if (fp.TryGetArgument(line, "DIST=", ref darg))
+            {
+              //Console.WriteLine($"Found DIST= argument: {darg}");
+              lastDist = darg;
+              processNum++;
+            }
+            break;
+          case 2: // wait for cut command, you're nearing the end of a course.
+            if (line.Contains("cut"))
+            {
+              //Console.WriteLine($"Found cut command in course {courseNum}.");
+              result.Add(line);
+              processNum++;
+            }
+            else
+            {
+              CheckIfMissingDISTCommand(line, result, ref lastDist);
+
+            }
+            break;
+          case 3: // wait for G9 to indicate last move of the course. you've reached the end of this course.
+            if (line.Contains("G9"))
+            {
+              //Console.WriteLine($"Found G9 command in course {courseNum}.");
+              result.Add(line);
+              processNum = 0;
+            }
+            else
+            {
+              CheckIfMissingDISTCommand(line, result, ref lastDist);
+            }
+            break;
+        }
+      }
+      return result;
+    }
+
+    private static void CheckIfMissingDISTCommand(string line, List<string> result, ref double lastDist)
+    {
+      double darg = 0;
+      Electroimpact.FileParser.cFileParse fp = new Electroimpact.FileParser.cFileParse();
+      if (fp.TryGetArgument(line, "G", ref darg))
+      {
+        if ((int)darg == 1 || (int)darg == 9)
+        {
+          if (line.Contains("DIST="))
+          {
+            fp.TryGetArgument(line, "DIST=", ref darg);
+            if (darg - lastDist > 4.0)
+            {
+              lastDist = darg;
+              result.Add(line);
+            }
+          }
+        }
+        else
+        {
+          result.Add(line);
+        }
+      }
+      else
+      {
+        result.Add(line);
+      }
+
+      return;
+    }
+
     public static void ConvertAProgram(string inputFile, string outputFile)
     {
       Console.WriteLine($"Converting {inputFile} to {outputFile} in rXrYrZ format.");
 
       string[] lines = File.ReadAllLines(inputFile);
+
+      lines = cleanUpBasics(lines.ToList()).ToArray();
+
 
       var g1Regex = new Regex(@"G1\s+.*", RegexOptions.Compiled);
       var g9Regex = new Regex(@"G9\s+.*", RegexOptions.Compiled);
@@ -30,41 +130,44 @@ namespace GCodeParser
         if (line.Contains("APPROACH_ROTX"))
         {
           var safeStartEnd = ProcessSafeMoveCommand(line);
-          List<string> SafeMoves = insertSafeMove(safeStartEnd.Target, safeStartEnd.TargetU);
+
+          //Uncomment to use our safemove.  Use insertEulerXYZCodes, to use their safe move and afterwords set ORIYP2
+          //List<string> SafeMoves = insertSafeMove(safeStartEnd.Target, safeStartEnd.TargetU);
+          List<string> SafeMoves = insertEulerXYZCodes(line);
           for (int i = 0; i < SafeMoves.Count; i++)
           {
             outputLines.Add(SafeMoves[i]);
           }
-          for (int nLookAhead = nline + 1; nLookAhead < lines.Length; nLookAhead++)
-          {
-            if (g1Regex.IsMatch(lines[nLookAhead]))
-            {
-              double Uarg;
-              cPose endpose;
-              getMotionArguments(fieldRegex, lines[nLookAhead], out Uarg, out endpose);
-              cLHT endlhtPose = new cLHT();
-              endlhtPose.setTransformFromEulerZYX(endpose);
-              cLHT Ucmd = new cLHT(0, 0, 0, -Uarg.D2R(), 0, 0);
-              cPose endcartesianPose = (Ucmd * endlhtPose).getPoseEulerXYZ();
-              // now drop the safe move lines
+          //for (int nLookAhead = nline + 1; nLookAhead < lines.Length; nLookAhead++)
+          //{
+          //  if (g1Regex.IsMatch(lines[nLookAhead]))
+          //  {
+          //    double Uarg;
+          //    cPose endpose;
+          //    getMotionArguments(fieldRegex, lines[nLookAhead], out Uarg, out endpose);
+          //    cLHT endlhtPose = new cLHT();
+          //    endlhtPose.setTransformFromEulerZYX(endpose);
+          //    cLHT Ucmd = new cLHT(0, 0, 0, -Uarg.D2R(), 0, 0);
+          //    cPose endcartesianPose = (Ucmd * endlhtPose).getPoseEulerXYZ();
+          //    // now drop the safe move lines
 
-              //this is broken.  We are expecting Euler rx ry rz, with the rotation built in.  then we undo the rotation in GeneratePath, generate the path, and then apply the rotation again.
-              var (poses, angles) = GeneratePath(safeStartEnd.Target, endpose, safeStartEnd.TargetU, Uarg, (int)(Uarg - safeStartEnd.TargetU));
-              
-              for (int i = 0; i < poses.Count; i++)
-              {
-                cTransform ROTX = new cTransform(0, 0, 0, angles[i], 0, 0);
-                cPose poseZYX;
+          //    //this is broken.  We are expecting Euler rx ry rz, with the rotation built in.  then we undo the rotation in GeneratePath, generate the path, and then apply the rotation again.
+          //    var (poses, angles) = GeneratePath(safeStartEnd.Target, endpose, safeStartEnd.TargetU, Uarg, (int)(Uarg - safeStartEnd.TargetU));
 
-                poseZYX = (ROTX.getLHT() * poses[i].getLHT()).getPoseEulerXYZ();
-                string poseString = $"X={poseZYX.x:F3} Y={poseZYX.y:F3} Z={poseZYX.z:F3} RZ={poseZYX.rx:F3} RY={poseZYX.ry:F3} RX={poseZYX.rz:F3} ROTX=DC({angles[i].m180p180():F3})";
-                outputLines.Add(poseString);
-              }
+          //    for (int i = 0; i < poses.Count; i++)
+          //    {
+          //      cTransform ROTX = new cTransform(0, 0, 0, angles[i], 0, 0);
+          //      cPose poseZYX;
 
-              break;
-            }
+          //      poseZYX = (ROTX.getLHT() * poses[i].getLHT()).getPoseEulerXYZ();
+          //      string poseString = $"X={poseZYX.x:F3} Y={poseZYX.y:F3} Z={poseZYX.z:F3} RZ={poseZYX.rx:F3} RY={poseZYX.ry:F3} RX={poseZYX.rz:F3} ROTX=DC({angles[i].m180p180():F3})";
+          //      outputLines.Add(poseString);
+          //    }
 
-          }
+          //    break;
+          //  }
+
+          //}
 
 
           continue;
@@ -73,7 +176,7 @@ namespace GCodeParser
         bool isG9 = g9Regex.IsMatch(line);
         if (isG9)
         {
-          Console.WriteLine("got g9");
+          //Console.WriteLine("got g9");
         }
         if (!(isG1 || isG9))
         {
@@ -93,20 +196,25 @@ namespace GCodeParser
         cPose pose;
         double W;
         getMotionArguments(fieldRegex, line, out W, out pose);
+        Electroimpact.FileParser.cFileParse fp = new Electroimpact.FileParser.cFileParse();
+        double distArg;
+        bool gotDistArg = fp.GetArgument(line, "DIST=", out distArg, true);
+        string distString = gotDistArg ? $"DIST={distArg:F3}" : "";
+        //Console.WriteLine($"DIST={distArg:0.000}");
         cLHT lhtPose = new cLHT();
         lhtPose.setTransformFromEulerZYX(pose);
         cLHT Wcmd = new cLHT(0, 0, 0, -W.D2R(), 0, 0);
         //cPose cartesianPose = (Wcmd * lhtPose).getPoseEulerXYZ();
         cPose cartesianPose = lhtPose.getPoseEulerXYZ();
-        Console.WriteLine($"X: {cartesianPose.X:0.000} Y: {cartesianPose.Y:0.000} Z: {cartesianPose.Z:0.000} RZ: {cartesianPose.rX:0.000} RY: {cartesianPose.rY:0.000} RX: {cartesianPose.rZ:0.000} ROTX: {W:0.000}".Pastel(Color.Green));
+        //Console.WriteLine($"X: {cartesianPose.X:0.000} Y: {cartesianPose.Y:0.000} Z: {cartesianPose.Z:0.000} RZ: {cartesianPose.rX:0.000} RY: {cartesianPose.rY:0.000} RX: {cartesianPose.rZ:0.000} ROTX: {W:0.000}".Pastel(Color.Green));
 
         // Create the output line        
         string outputLineType = isG1 ? "G1" : "G9";
-        string outputLine = $"N{nValue} {outputLineType} X={cartesianPose.X:0.000} Y={cartesianPose.Y:0.000} Z={cartesianPose.Z:0.000} RZ={cartesianPose.rX:0.000} RY={cartesianPose.rY:0.000} RX={cartesianPose.rZ:0.000} ROTX=DC({W:0.000})";
+        string outputLine = $"N{nValue} {outputLineType} X={cartesianPose.X:0.000} Y={cartesianPose.Y:0.000} Z={cartesianPose.Z:0.000} RZ={cartesianPose.rX:0.000} RY={cartesianPose.rY:0.000} RX={cartesianPose.rZ:0.000} ROTX=DC({W:0.000}) {distString}";
         outputLines.Add(outputLine);
       }
 
-      outputLines = createTransferLines.massageTransferLines(outputLines);
+      //outputLines = createTransferLines.massageTransferLines(outputLines);
 
 
       if (outputLines.Count > 0)
@@ -137,7 +245,7 @@ namespace GCodeParser
         }
       }
 
-      
+
 
       pose = new cPose
       {
@@ -149,7 +257,7 @@ namespace GCodeParser
         rx = values[5]
       };
 
-      if( orderIsXYZ)
+      if (orderIsXYZ)
       {
         double temp = pose.rx;
         pose.rx = pose.rz;
@@ -161,6 +269,68 @@ namespace GCodeParser
       //pose = setLHT.getPoseEulerXYZ();
       uArg = values[6];
     }
+
+    public static void sparTreatment(string filein, string fileout, double minSpacing = 1.9)
+    {
+      Console.WriteLine($"Converting {filein} to {fileout} to insert pauses at inflections.");
+      string[] lines = File.ReadAllLines(filein);
+      List<string> outputLines = new List<string>();
+
+      int state = 0;
+      double distLast = 0;
+
+      bool ShouldCopyLine(string line, ref double distLast)
+      {
+        if (!line.Contains("G1"))
+          return true;
+
+        var fp = new Electroimpact.FileParser.cFileParse();
+        if (fp.GetArgument(line, "DIST=", out double darg, true))
+        {
+          if (darg - distLast > minSpacing)
+          {
+            distLast = darg;
+            return true;
+          }
+          return false;
+        }
+
+        return true;
+      }
+
+      foreach (string line in lines)
+      {
+        bool copyLine = true;
+
+        switch (state)
+        {
+          case 0:
+            if (line.Contains("FEED"))
+              state++;
+            break;
+
+          case 1:
+            if (line.Contains("cut"))
+              state++;
+            copyLine = ShouldCopyLine(line, ref distLast);
+            break;
+
+          case 2:
+            if (line.Contains("UV(0)"))
+              state = 0;
+            copyLine = ShouldCopyLine(line, ref distLast);
+            break;
+        }
+
+        if (copyLine)
+          outputLines.Add(line);
+        //else
+        //  outputLines.Add("; " + line); // Comment out the line if it doesn't meet the criteria
+      }
+
+      File.WriteAllLines(fileout, outputLines);
+    }
+
 
     public static (cPose Target, double TargetU) ProcessSafeMoveCommand(string line)
     {
@@ -176,8 +346,8 @@ namespace GCodeParser
                          .ToList();
 
         // Example: print them
-        foreach (var number in numbers)
-          Console.WriteLine(number);
+        // foreach (var number in numbers)
+        //   Console.WriteLine(number);
 
 
         double startX = numbers[0];
@@ -197,6 +367,15 @@ namespace GCodeParser
         Console.WriteLine("No match found.");
         return (new cPose(), 0);
       }
+    }
+
+    public static List<string> insertEulerXYZCodes(string line)
+    {
+      List<string> result = new List<string>();
+      result.Add(line);
+      result.Add("ORIRPY2");
+      result.Add("M0");
+      return result;
     }
     public static List<string> insertSafeMove(cPose Target, double TargetRotX)
     {
@@ -255,7 +434,7 @@ namespace GCodeParser
         return a + (b - a) * t;
       }
       cTransform uStart = new cTransform(0, 0, 0, -startAngle, 0, 0);
-      cTransform uEnd = new cTransform(0,0,0, -endAngle, 0, 0);
+      cTransform uEnd = new cTransform(0, 0, 0, -endAngle, 0, 0);
       startPose = (uStart.getLHT() * startPose.getLHT()).getPoseEulerXYZ();
       endPose = (uEnd.getLHT() * endPose.getLHT()).getPoseEulerXYZ();
 
@@ -276,13 +455,306 @@ namespace GCodeParser
         angles.Add(angle);
       }
 
-      for(int i = 0; i < poses.Count; i++)
+      for (int i = 0; i < poses.Count; i++)
       {
         cTransform rotx = new cTransform(0, 0, 0, angles[i], 0, 0);
         poses[i] = (rotx.getLHT() * poses[i].getLHT()).getPoseEulerXYZ();
       }
 
       return (poses, angles);
+    }
+
+
+    public class cMotionArguments
+    {
+      public double X { get; set; }
+      public double Y { get; set; }
+      public double Z { get; set; }
+      public double RZ { get; set; }
+      public double RY { get; set; }
+      public double RX { get; set; }
+      public double ROTX { get; set; } // DC value
+      public double DIST { get; set; } // Distance argument
+      public double N { get; set; } // N value, if needed
+
+      public static cMotionArguments getMotionArguments(string line)
+      {
+        Electroimpact.FileParser.cFileParse fp = new Electroimpact.FileParser.cFileParse();
+        cMotionArguments args = new cMotionArguments();
+        fp.GetArgument(line, "X=", out double X, true);
+        fp.GetArgument(line, "Y=", out double Y, true);
+        fp.GetArgument(line, "Z=", out double Z, true);
+        fp.GetArgument(line, "RZ=", out double RZ, true);
+        fp.GetArgument(line, "RY=", out double RY, true);
+        fp.GetArgument(line, "RX=", out double RX, true);
+        fp.GetArgument(line, "ROTX=DC(", out double ROTX, false);
+        fp.GetArgument(line, "DIST=", out double DIST, false);
+        fp.GetArgument(line, "N", out double N, false); // Optional N value
+
+        args.X = X;
+        args.Y = Y;
+        args.Z = Z;
+        args.RZ = RZ;
+        args.RY = RY;
+        args.RX = RX;
+        args.ROTX = ROTX;
+        args.N = N; // Set N value if it exists
+        args.DIST = DIST;
+
+        return args;
+      }
+
+      public static cMotionArguments getAPPROACH_ROTX_ARGUMENTS(string line)
+      {
+        cMotionArguments output = new();
+
+        int start = line.IndexOf('(');
+        int end = line.IndexOf(')');
+
+        if (start == -1 || end == -1 || end <= start)
+          return output; // return empty if format is bad
+
+        string args = line.Substring(start + 1, end - start - 1);
+
+        string[] parts = args.Split(',');
+
+        List<double> values = new List<double>();
+        foreach (string part in parts)
+        {
+          if (double.TryParse(part.Trim(), out double val))
+          {
+            values.Add(val);
+          }
+        }
+
+        output.X = values[0];
+        output.Y = values[1];
+        output.Z = values[2];
+        output.RX = values[3];
+        output.RY = values[4];
+        output.RZ = values[5];
+        output.ROTX = values[6];
+        output.DIST = values[7];
+
+        Electroimpact.FileParser.cFileParse fp = new();
+        fp.GetArgument(line, "N", out double N, false); // Optional N value
+        output.N = (int)N;
+
+
+        return output;
+
+      }
+    }
+
+
+    internal static void rotXBasedOnYZ(string fileName, string outputFileName)
+    {
+      Electroimpact.FileParser.cFileParse fp = new Electroimpact.FileParser.cFileParse();
+      Console.WriteLine("ROTX,ROTYZ,DeltaROTX,C,N");
+      List<string> output = new List<string>();
+      output.Add("ROTX,ROTYZ,DeltaROTX,C,N");
+      int state = 0;
+      foreach (string line in File.ReadAllLines(fileName))
+      {
+        bool copyLine = true;
+
+        switch (state)
+        {
+          case 0:
+            if (line.Contains("FEED"))
+              state++;
+            break;
+
+          case 1:
+            if (line.Contains("cut"))
+              state++;
+            break;
+
+          case 2:
+            if (line.Contains("UV(0)"))
+              state = 0;
+            break;
+        }
+        if (state > 0 && (line.Contains("G1") || line.Contains("G9")))
+        {
+          cMotionArguments args = cMotionArguments.getMotionArguments(line);
+          double rotX = -Math.Atan2(args.Y, args.Z).R2D(); // Calculate ROTX based on Y and Z
+          //Console.WriteLine($"{args.ROTX:F3} -->> {rotX:F3} dRX: {(args.ROTX - rotX):F3}");
+          Console.WriteLine($"{args.ROTX:F3},{rotX:F3},{(args.ROTX - rotX).m180p180():F3},{args.RX},{args.N:F0}");
+          output.Add($"{args.ROTX:F3},{rotX:F3},{(args.ROTX - rotX).m180p180():F3},{args.RX},{args.N:F0}");
+        }
+      }
+      string text = string.Join(Environment.NewLine, output);
+      Clipboard.SetText(text);
+    }
+
+    internal static void rotXStrategies(string fileName, string outputFileName, double ROTXOffset)
+    {
+      Electroimpact.FileParser.cFileParse fp = new Electroimpact.FileParser.cFileParse();
+      Console.WriteLine("ROTX,ROTYZ,DeltaROTX,C,N");
+      List<string> output = new List<string>();
+      output.Add("ROTX,ROTYZ,DeltaROTX,C,N");
+      int state = 0;
+      foreach (string line in File.ReadAllLines(fileName))
+      {
+        bool copyLine = true;
+
+        switch (state)
+        {
+          case 0:
+            if (line.Contains("FEED"))
+              state++;
+            break;
+
+          case 1:
+            if (line.Contains("cut"))
+              state++;
+            break;
+
+          case 2:
+            if (line.Contains("UV(0)"))
+              state = 0;
+            break;
+        }
+        if (state > 0 && (line.Contains("G1") || line.Contains("G9")))
+        {
+          cMotionArguments args = cMotionArguments.getMotionArguments(line);
+          double rotX = -Math.Atan2(args.Y, args.Z).R2D(); // Calculate ROTX based on Y and Z
+          double rotXWithOffset = (rotX + ROTXOffset).m180p180(); // Apply the offset
+          //Console.WriteLine($"{args.ROTX:F3} -->> {rotX:F3} dRX: {(args.ROTX - rotX):F3}");
+          //Console.WriteLine($"{args.ROTX:F3},{rotX:F3},{(args.ROTX - rotXWithOffset).m180p180():F3},{args.RX},{args.N:F0}");
+          output.Add($"{args.ROTX:F3},{rotX:F3},{(args.ROTX - rotXWithOffset).m180p180():F3},{args.RX},{args.N:F0}");
+        }
+      }
+      Console.WriteLine("Done!");
+      string text = string.Join(Environment.NewLine, output);
+      Clipboard.SetText(text);
+    }
+
+    internal static void rotXStrategies2(string fileName, string outputFileName, double ROTXOffset)
+    {
+      long count = 0;
+      Electroimpact.FileParser.cFileParse fp = new Electroimpact.FileParser.cFileParse();
+      List<string> output = new List<string>();
+
+      double calcROTX(cMotionArguments inputArgs)
+      {
+        double rotX = -Math.Atan2(inputArgs.Y, inputArgs.Z).R2D(); // Calculate ROTX based on Y and Z
+        double rotXWithOffset = (rotX + ROTXOffset).m180p180(); // Apply the offset
+        return rotXWithOffset;
+      }
+
+      string processGline(string line)
+      {
+        string output = "";
+        cMotionArguments args = cMotionArguments.getMotionArguments(line);
+        double newROTX = calcROTX(args);
+        fp.ReplaceArgument(line, "ROTX=DC(", newROTX, out output);
+
+        return output;
+      }
+
+      string processAPPROCH_ROTX_line(string line)
+      {
+        string output = "";
+        cMotionArguments args = cMotionArguments.getAPPROACH_ROTX_ARGUMENTS(line);
+
+        double newROTX = calcROTX(args);
+        output = $"N{args.N} APPROACH_ROTX_XYZ({args.X:F3},{args.Y:F3},{args.Z:F3},{args.RX:F3},{args.RY:F3},{args.RZ:F3},{newROTX:F3},{args.DIST:F3})";
+
+        return output;
+      }
+
+      foreach (string line in File.ReadAllLines(fileName))
+      {
+        if (count % 1000 == 0)
+        {
+          Console.WriteLine($"Processing: {line}");
+        }
+        count++;
+
+        if (line.Contains("G1") || line.Contains("G9"))
+        {
+          string newline = processGline(line);
+          output.Add(newline);
+        }
+        else if (line.Contains("APPROACH_ROTX_XYZ"))
+        {
+          string newLine = processAPPROCH_ROTX_line(line);
+          output.Add(newLine);
+        }
+        else
+        {
+          output.Add(line);
+        }
+      }
+      Console.WriteLine("Done!");
+
+      //output the resutlts:
+      string text = string.Join(Environment.NewLine, output);
+      if (!string.IsNullOrEmpty(outputFileName))
+      {
+        File.WriteAllText(outputFileName, text);
+        Console.WriteLine($"Output written to {outputFileName}");
+      }
+      else
+      {
+        Clipboard.SetText(text);
+        Console.WriteLine("Output copied to clipboard.");
+      }
+    }
+
+    internal static void fliprXrZ(string fileName, string outputFileName)
+    {
+      long count = 0;
+      Electroimpact.FileParser.cFileParse fp = new Electroimpact.FileParser.cFileParse();
+      List<string> output = new List<string>();
+
+      // Helper subFunctions:
+      string processGline(string line)
+      {
+        string output = "";
+
+        output = line.Replace("RZ=", "TEMP=").Replace("RX=", "RZ=").Replace("TEMP=", "RX=");
+
+        return output;
+      }
+
+      // Main Process:
+      foreach (string line in File.ReadAllLines(fileName))
+      {
+        if (count % 1000 == 0)
+        {
+
+          fp.GetArgument(line, "N", out double dog, true);
+          Console.WriteLine($"Processing Line: {dog:F0}");
+        }
+        count++;
+
+        if (line.Contains("G1") || line.Contains("G9"))
+        {
+          string newline = processGline(line);
+          output.Add(newline);
+        }
+        else
+        {
+          output.Add(line);
+        }
+      }
+      Console.WriteLine("Done!");
+
+      //output the resutlts:
+      string text = string.Join(Environment.NewLine, output);
+      if (!string.IsNullOrEmpty(outputFileName))
+      {
+        File.WriteAllText(outputFileName, text);
+        Console.WriteLine($"Output written to {outputFileName}");
+      }
+      else
+      {
+        Clipboard.SetText(text);
+        Console.WriteLine("Output copied to clipboard.");
+      }
     }
   }
 }

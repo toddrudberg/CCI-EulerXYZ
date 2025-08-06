@@ -1,0 +1,33 @@
+PROC CC_INIT_XYZ ;DISPLOF
+
+DEF INT ITER
+DEF INT MAX_R=30 ;MAXIMUM R VARIABLE USED
+
+STOPRE
+
+G710;SETS UNITS
+
+FOR ITER=0 TO MAX_R
+    R[ITER] = 0
+ENDFOR
+STOPRE
+
+HEAD_OFFSETS(DRYRUN_OFFSET)
+
+M59 ;HT2 SKIP TO SPECIFIC COURSE PROMPT
+STOPRE
+
+M71 ;PART PROGRAM ENABLES
+    ;INCLUDES AMBER LIGHTS, FUME EXTRACTOR, HEAD FEED HOLD REQUEST
+
+;INITIAL SETTINGS
+TRAORI ;ENABLE TRANSFORM
+CYCLE832(1.5,_ORI_ROUGH,2) 
+;the first parameter allows lineaar deviation of up to x.y mm.
+;the second parameter sets the orientation mode, but depends on toolpoint length.  Orientation will not be relaxed beyond first parameter - think s = r * theta.
+;the third parameter sets the dynamic level, 0-4.  Zero, means lower acceleration, jerk etc.  4 accelerates harder and has higher jerk with more risk of machine vibration. 
+ORISON
+PRESETONS(DIST,0.0)
+STOPRE
+
+M17 ;RETURN
