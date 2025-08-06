@@ -964,7 +964,6 @@ namespace GCodeParser
     private void button7_Click(object sender, EventArgs e)
     {
       this.Enabled = false;
-      double ROTXoffset = -30;
       OpenFileDialog ofd = new OpenFileDialog();
       ofd.Filter = "GCode files (*.mpf)|*.mpf|All files (*.*)|*.*";
       ofd.Title = "Select GCode File";
