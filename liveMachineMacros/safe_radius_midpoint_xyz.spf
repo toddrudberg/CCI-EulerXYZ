@@ -60,17 +60,4 @@ ENDIF
 
 ;CALCULATIONS COMPLETE
 
-;UNCOMMENT THE FOLLOWING LINES TO DEBUG
-;MSG("CUR:"<<XCUR<<", "<<YCUR<<", "<<ZCUR<<", "<<RCUR<<"")
-;M0
-;STOPRE
-
-;MSG("END:"<<XEND<<", "<<YEND<<", "<<ZEND<<", "<<REND<<"")
-;M0
-;STOPRE
-
-;MSG("MID:"<<XPOS<<", "<<YPOS<<", "<<ZPOS<<", "<<RAVG<<"")
-;M0
-;STOPRE
-
 RET

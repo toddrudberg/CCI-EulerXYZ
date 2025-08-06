@@ -703,5 +703,58 @@ namespace GCodeParser
         Console.WriteLine("Output copied to clipboard.");
       }
     }
+
+    internal static void fliprXrZ(string fileName, string outputFileName)
+    {
+      long count = 0;
+      Electroimpact.FileParser.cFileParse fp = new Electroimpact.FileParser.cFileParse();
+      List<string> output = new List<string>();
+
+      // Helper subFunctions:
+      string processGline(string line)
+      {
+        string output = "";
+
+        output = line.Replace("RZ=", "TEMP=").Replace("RX=", "RZ=").Replace("TEMP=", "RX=");
+
+        return output;
+      }
+
+      // Main Process:
+      foreach (string line in File.ReadAllLines(fileName))
+      {
+        if (count % 1000 == 0)
+        {
+
+          fp.GetArgument(line, "N", out double dog, true);
+          Console.WriteLine($"Processing Line: {dog:F0}");
+        }
+        count++;
+
+        if (line.Contains("G1") || line.Contains("G9"))
+        {
+          string newline = processGline(line);
+          output.Add(newline);
+        }
+        else
+        {
+          output.Add(line);
+        }
+      }
+      Console.WriteLine("Done!");
+
+      //output the resutlts:
+      string text = string.Join(Environment.NewLine, output);
+      if (!string.IsNullOrEmpty(outputFileName))
+      {
+        File.WriteAllText(outputFileName, text);
+        Console.WriteLine($"Output written to {outputFileName}");
+      }
+      else
+      {
+        Clipboard.SetText(text);
+        Console.WriteLine("Output copied to clipboard.");
+      }
+    }
   }
 }

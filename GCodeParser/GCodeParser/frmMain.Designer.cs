@@ -37,6 +37,7 @@
       btnSparCorner = new Button();
       btnRotXBasedOnYZ = new Button();
       button6 = new Button();
+      button7 = new Button();
       SuspendLayout();
       // 
       // button1
@@ -129,11 +130,22 @@
       button6.UseVisualStyleBackColor = true;
       button6.Click += button6_Click;
       // 
+      // button7
+      // 
+      button7.Location = new Point(207, 300);
+      button7.Name = "button7";
+      button7.Size = new Size(188, 23);
+      button7.TabIndex = 9;
+      button7.Text = "Flip rZ rX to eXYZ";
+      button7.UseVisualStyleBackColor = true;
+      button7.Click += button7_Click;
+      // 
       // frmMain
       // 
       AutoScaleDimensions = new SizeF(7F, 15F);
       AutoScaleMode = AutoScaleMode.Font;
       ClientSize = new Size(800, 450);
+      Controls.Add(button7);
       Controls.Add(button6);
       Controls.Add(btnRotXBasedOnYZ);
       Controls.Add(btnSparCorner);
@@ -160,5 +172,6 @@
     private Button btnSparCorner;
     private Button btnRotXBasedOnYZ;
     private Button button6;
+    private Button button7;
   }
 }
