@@ -1,0 +1,15 @@
+PROC GET_KVECTOR(REAL RXPOS, REAL RYPOS, REAL RZPOS, REAL ROTXPOS, VAR REAL KX, VAR REAL KY, VAR REAL KZ)
+    DEF REAL KY_TEMP
+
+    ; Calculate the radial vector components based on the input angles
+    KX = SIN(RYPOS)
+    KY = -SIN(RXPOS) * COS(RYPOS)
+    KZ =  COS(RXPOS) * COS(RYPOS)
+      
+
+    ; Rotate the radial vector into the unrotated mandrel coordinate system
+    KY_TEMP = COS(ROTXPOS) * KY - SIN(ROTXPOS) * KZ
+    KZ = SIN(ROTXPOS) * KY + COS(ROTXPOS) * KZ
+    KY = KY_TEMP
+
+RET

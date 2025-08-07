@@ -53,6 +53,11 @@ public static class doubleExtensionMethods
         return (Radians * 180.0 / Math.PI);
     }
 
+    public static double POT(this double input)
+    { 
+      return input * input; // Power of Two
+    }
+
     /// <summary>
     /// Converts an angle to a value between 0 and 360 degrees.
     /// </summary>

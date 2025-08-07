@@ -1,5 +1,6 @@
 using Pastel;
 using System.Diagnostics;
+using System.Drawing.Text;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.Xml;
@@ -978,6 +979,85 @@ namespace GCodeParser
       string outputFileName = Path.Combine(directory, filenameWithoutExt + "_rzrxflip.mpf");
       ConvertProgram.fliprXrZ(ofd.FileName, outputFileName);
       this.Enabled = true;
+    }
+
+    private void button8_Click(object sender, EventArgs e)
+    {
+      //N76 APPROACH_ROTX_XYZ(-108.58134, 85.87435, 120.16431, -45.0000000, -11.9968993, 45.7414848, -45.00000, 0.000)
+      double x,y,z,rz,ry,rx,rotx;
+      x = -108.58134;
+      y = 85.87435;
+      z = 120.16431;
+      rx = -45.0000000;
+      ry = -11.9968993;
+      rz = 45.7414848;
+      rotx = -45.00000;
+
+      void CalcKVector(double rx, double ry, double rz, double rotx)
+      {
+        double vx, vy, vz;
+        vx = Math.Sin(ry.D2R());
+        vy = -Math.Sin(rx.D2R()) * Math.Cos(ry.D2R());
+        vz = Math.Cos(rx.D2R()) * Math.Cos(ry.D2R());
+
+        // Now rotate by rotx
+        double cosROTX = Math.Cos(rotx.D2R());
+        double sinROTX = Math.Sin(rotx.D2R());
+        double tempVY = vy * cosROTX - vz * sinROTX;
+        vz = vy * sinROTX + vz * cosROTX;
+        vy = tempVY;
+        vx = vx;
+
+        double[] k = new double[] { vx, vy, vz };
+        Console.WriteLine($"K Vector: KX={k[0]:F3} KY={k[1]:F3} KZ={k[2]:F3}".Pastel(Color.Cyan));
+
+        double rxt, ryt, rzt;
+        rxt = -Math.Atan2(vy, vz).R2D(); // Calculate the rotation around X based on vy and vz
+        ryt = Math.Asin(vx).R2D(); // Calculate the rotation around Y based on vx and the magnitude of vy and vz
+        rzt = rz;
+
+        Console.WriteLine($"Calculated Rotations: RX={rxt:F3} RY={ryt:F3} RZ={rzt:F3}".Pastel(Color.Cyan));
+
+      }
+
+      double SafeRadius = 575.0;
+
+      cLHT desiredPose = new cLHT(x, y, z, rx.D2R(), ry.D2R(), rz.D2R());
+      cLHT cROTx = new cLHT(0, 0, 0, -rotx.D2R(), 0, 0);
+      cLHT xformedPoseLHT = cROTx * desiredPose;
+      cPose xformedPose = xformedPoseLHT.getPoseEulerXYZ();
+
+      CalcKVector(rx, ry, rz, -rotx);
+
+      double vx, vy, vz;
+      vx = Math.Sin(xformedPose.ry.D2R());
+      vy = -Math.Sin(xformedPose.rx.D2R()) * Math.Cos(xformedPose.ry.D2R());
+      vz = Math.Cos(xformedPose.rx.D2R()) * Math.Cos(xformedPose.ry.D2R());
+
+      double[] k = new double[] { xformedPoseLHT.M[0,2], xformedPoseLHT.M[1, 2], xformedPoseLHT.M[2, 2] };
+
+      Console.WriteLine($"xformedPose: X={xformedPose.x:F3} Y={xformedPose.y:F3} Z={xformedPose.z:F3} RX={xformedPose.rx:F3} RY={xformedPose.ry:F3} RZ={xformedPose.rz:F3} ROTX=DC({rotx:F3})".Pastel(Color.Cyan));
+      Console.WriteLine($"K Vector: KX={k[0]:F3} KY={k[1]:F3} KZ={k[2]:F3}".Pastel(Color.Cyan));
+      Console.WriteLine($"Vector: VX={vx:F3} VY={vy:F3} VZ={vz:F3}".Pastel(Color.Cyan));
+
+      cPose zyx = desiredPose.getPoseEulerZYX();
+      Console.WriteLine($"ZYX {zyx.rz:F3} {zyx.ry:F3} {zyx.rx:F3}");
+
+      vx = vx * SafeRadius;
+
+      double len = Math.Sqrt(vy * vy + vz * vz);
+      vy /= len; // Normalize vy and vz
+      vz /= len; // Normalize vy and vz
+      vy *= SafeRadius;
+      vz *= SafeRadius;
+
+      //output new vx, vy, vz
+      Console.WriteLine($"Vector normalized: VX={vx:F3} VY={vy:F3} VZ={vz:F3}".Pastel(Color.Cyan));
+
+      cPose newPose = new cPose(xformedPose.x + vx, vy, vz, xformedPose.rx, xformedPose.ry, xformedPose.rz);
+      Console.WriteLine($"New Pose: X={newPose.x:F3} Y={newPose.y:F3} Z={newPose.z:F3} RX={newPose.rx:F3} RY={newPose.ry:F3} RZ={newPose.rz:F3} ROTX=DC({rotx:F3})".Pastel(Color.Cyan));
+
+
     }
   }
 }
