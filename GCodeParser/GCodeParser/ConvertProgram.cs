@@ -761,8 +761,9 @@ namespace GCodeParser
     {
       string numberFormat = "F6";
       bool usePTPforOffpart = true;
-      bool noMidCourseMCodes = true;
-      double minSpacing = 5.0; // Minimum distance to trigger a print of the line
+      bool noMidCourseMCodes = false;
+      bool moveMidCourseMCode = true;
+      double minSpacing = 10.0; // Minimum distance to trigger a print of the line
       double minAngleChange = 5.0; // Minimum angle change to trigger a print of the line
 
       long count = 0;
@@ -789,8 +790,12 @@ namespace GCodeParser
       cMotionArguments argsLastPrint = new cMotionArguments();
       string lastLine = "";
       string lastMotionLine = "";
-      foreach (string line in File.ReadAllLines(fileName))
+      string[] lines = File.ReadAllLines(fileName);
+      int nFeedLine = 0;
+      int nMcodeDropped = 0;
+      for( int i = 0; i < lines.Length; i++)
       {
+        string line = lines[i];
         if (count % 1000 == 0)
         {
           fp.GetArgument(line, "N", out double dog, true);
@@ -803,6 +808,8 @@ namespace GCodeParser
           case 0:
             if (line.Contains("FEED"))
             {
+              nFeedLine = output.Count;
+              nMcodeDropped = 0;
               state++;
             }
             break;
@@ -869,11 +876,36 @@ namespace GCodeParser
           {
             if (lastLine.Contains("G1") || lastLine.Contains("G9"))
             {
-              if (lastLine != lastMotionLine)
+              //if (lastLine != lastMotionLine)
+              //{
+              //  argsLastPrint = cMotionArguments.getMotionArguments(lastLine);
+              //  string outputline = removeExtraDigits(lastLine, argsLastPrint);
+              //  output.Add(outputline);
+              //}
+              cMotionArguments mcodePositin = cMotionArguments.getMotionArguments(lastLine);
+              if (line.Contains("M72"))
               {
-                argsLastPrint = cMotionArguments.getMotionArguments(lastLine);
-                string outputline = removeExtraDigits(lastLine, argsLastPrint);
-                output.Add(outputline);
+                nMcodeDropped++;
+                string movedMCode = $"ID={nMcodeDropped} WHEN $AA_IM[DIST] >= {mcodePositin.DIST:F3} DO M72";
+                output[nFeedLine] += "\n" + movedMCode;
+              }
+              else if (line.Contains("M61"))
+              {
+                nMcodeDropped++;
+                string movedMCode = $"ID={nMcodeDropped} WHEN $AA_IM[DIST] >= {mcodePositin.DIST:F3} DO M61";
+                output[nFeedLine] += "\n" + movedMCode;
+              }
+              else if (line.Contains("M68"))
+              {
+                nMcodeDropped++;
+                string movedMCode = $"ID={nMcodeDropped} WHEN $AA_IM[DIST] >= {mcodePositin.DIST:F3} DO M68";
+                output[nFeedLine] += "\n" + movedMCode;
+              }
+              else if (line.Contains("M64"))
+              {
+                nMcodeDropped++;
+                string movedMCode = $"ID={nMcodeDropped} WHEN $AA_IM[DIST] >= {mcodePositin.DIST:F3} DO M64";
+                output[nFeedLine] += "\n" + movedMCode;
               }
             }
             else
@@ -881,7 +913,7 @@ namespace GCodeParser
               fp.GetArgument(line, "N", out double dog, true);
               MessageBox.Show($"Uh Oh. check line {dog}");
             }
-            if( !noMidCourseMCodes )
+            if( !noMidCourseMCodes && !moveMidCourseMCode )
               output.Add(line);
           }
           else

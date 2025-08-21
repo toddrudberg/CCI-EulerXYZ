@@ -22,11 +22,20 @@ M71 ;PART PROGRAM ENABLES
 
 ;INITIAL SETTINGS
 TRAORI ;ENABLE TRANSFORM
-CYCLE832(1.5,_ORI_ROUGH,2) 
+CYCLE832(2,_ORI_FINISH,2)
 ;the first parameter allows lineaar deviation of up to x.y mm.
 ;the second parameter sets the orientation mode, but depends on toolpoint length.  Orientation will not be relaxed beyond first parameter - think s = r * theta.
 ;the third parameter sets the dynamic level, 0-4.  Zero, means lower acceleration, jerk etc.  4 accelerates harder and has higher jerk with more risk of machine vibration. 
 ORISON
+;COMPOF
+;$SC_ORISON_TOL  = 1.0
+$MC_COMPRESSOR_MODE=3
+$MC_COMPRESS_SMOOTH_FACTOR[0] = 0.1
+$MC_SMOOTHING_MODE=2
+CTOL = 0.1
+OTOL = 0.5
+$MC_ORISMOOTHING_MODE=10
+;COMPOF ; turns compressor off. 
 PRESETONS(DIST,0.0)
 STOPRE
 
