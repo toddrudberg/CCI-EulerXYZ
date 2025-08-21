@@ -3,6 +3,7 @@ using Pastel;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.Eventing.Reader;
+using System.Globalization;
 using System.Linq;
 using System.Reflection.Metadata.Ecma335;
 using System.Security.Cryptography.X509Certificates;
@@ -793,6 +794,7 @@ namespace GCodeParser
       string[] lines = File.ReadAllLines(fileName);
       int nFeedLine = 0;
       int nMcodeDropped = 0;
+      double lastDISTCommand = 0;
       for( int i = 0; i < lines.Length; i++)
       {
         string line = lines[i];
@@ -819,6 +821,15 @@ namespace GCodeParser
               state = 0;
             break;
         }
+
+        if( line.Contains("G1") || line.Contains("G9"))
+        {
+          if( line.Contains("DIST="))
+          {
+            fp.GetArgument(line, "DIST=", out lastDISTCommand, false);
+          }
+        }
+
         if( state == 0 )
         {
           // look to see if we are in a transit line and insert a PTP if we are:
@@ -872,9 +883,9 @@ namespace GCodeParser
               argsLastPrint = args;
             }
           }
-          else if (line.Contains("M72") || line.Contains("M61") || line.Contains("M68") || line.Contains("M64"))
+          else if (line.Contains("M72") || line.Contains("M61") || line.Contains("M68") || line.Contains("M64") || line.Contains("SET_PATH_ACCEL"))
           {
-            if (lastLine.Contains("G1") || lastLine.Contains("G9"))
+            //if (lastLine.Contains("G1") || lastLine.Contains("G9"))
             {
               //if (lastLine != lastMotionLine)
               //{
@@ -882,37 +893,68 @@ namespace GCodeParser
               //  string outputline = removeExtraDigits(lastLine, argsLastPrint);
               //  output.Add(outputline);
               //}
-              cMotionArguments mcodePositin = cMotionArguments.getMotionArguments(lastLine);
+              //cMotionArguments mcodePositin = cMotionArguments.getMotionArguments(lastLine);
               if (line.Contains("M72"))
               {
                 nMcodeDropped++;
-                string movedMCode = $"ID={nMcodeDropped} WHEN $AA_IM[DIST] >= {mcodePositin.DIST:F3} DO M72";
+                string movedMCode = $"ID={nMcodeDropped + 10} WHEN $AA_IM[DIST] >= {lastDISTCommand:F3} DO M72; comment 1";
                 output[nFeedLine] += "\n" + movedMCode;
               }
               else if (line.Contains("M61"))
               {
                 nMcodeDropped++;
-                string movedMCode = $"ID={nMcodeDropped} WHEN $AA_IM[DIST] >= {mcodePositin.DIST:F3} DO M61";
+                string movedMCode = $"ID={nMcodeDropped + 10} WHEN $AA_IM[DIST] >= {lastDISTCommand:F3} DO M61; comment 2";
                 output[nFeedLine] += "\n" + movedMCode;
               }
               else if (line.Contains("M68"))
               {
                 nMcodeDropped++;
-                string movedMCode = $"ID={nMcodeDropped} WHEN $AA_IM[DIST] >= {mcodePositin.DIST:F3} DO M68";
+                string movedMCode = $"ID={nMcodeDropped + 10} WHEN $AA_IM[DIST] >= {lastDISTCommand:F3} DO M68; comment 3";
                 output[nFeedLine] += "\n" + movedMCode;
               }
               else if (line.Contains("M64"))
               {
                 nMcodeDropped++;
-                string movedMCode = $"ID={nMcodeDropped} WHEN $AA_IM[DIST] >= {mcodePositin.DIST:F3} DO M64";
-                output[nFeedLine] += "\n" + movedMCode;
+                //string movedMCode = $"ID={nMcodeDropped + 10} WHEN $AA_IM[DIST] >= {lastDISTCommand:F3} DO M64";
+                if ( lastLine != lastMotionLine)
+                {
+                  output.Add(lastLine);
+                }
+                output.Add(line);                
+              }
+              else if (line.Contains("SET_PATH_ACCEL"))
+              {
+                if (false)
+                {
+                  nMcodeDropped++;
+
+                  int l = line.IndexOf('(');
+                  int c = line.IndexOf(',', l + 1);
+                  int r = line.IndexOf(')', c + 1);
+
+                  var s1 = line.Substring(l + 1, c - l - 1).Trim();
+                  var s2 = line.Substring(c + 1, r - c - 1).Trim();
+
+                  double a = double.Parse(s1, CultureInfo.InvariantCulture);
+                  double b = double.Parse(s2, CultureInfo.InvariantCulture);
+
+                  //$SC_SD_MAX_PATH_ACCEL = PATH_ACCEL
+                  //$SC_SD_MAX_PATH_JERK = PATH_JERK
+                  string accCMD = $"$SC_SD_MAX_PATH_ACCEL = {a}";
+                  string jerkCMD = $"$SC_SD_MAX_PATH_JERK = {b}";
+                  string movedMCode = $"ID={nMcodeDropped + 10} WHEN $AA_IM[DIST] >= {lastDISTCommand:F3} DO {accCMD}; comment 3";
+                  output[nFeedLine] += "\n" + movedMCode;
+                  nMcodeDropped++;
+                  movedMCode = $"ID={nMcodeDropped + 10} WHEN $AA_IM[DIST] >= {lastDISTCommand:F3} DO {jerkCMD}; comment 3";
+                  output[nFeedLine] += "\n" + movedMCode;
+                }
               }
             }
-            else
-            {
-              fp.GetArgument(line, "N", out double dog, true);
-              MessageBox.Show($"Uh Oh. check line {dog}");
-            }
+            //else
+            //{
+            //  fp.GetArgument(line, "N", out double dog, true);
+            //  MessageBox.Show($"Uh Oh. check line {dog}");
+            //}
             if( !noMidCourseMCodes && !moveMidCourseMCode )
               output.Add(line);
           }
