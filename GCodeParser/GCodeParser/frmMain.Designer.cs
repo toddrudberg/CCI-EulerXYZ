@@ -39,6 +39,7 @@
       button6 = new Button();
       button7 = new Button();
       button8 = new Button();
+      btnBlockSpacing = new Button();
       SuspendLayout();
       // 
       // button1
@@ -151,11 +152,22 @@
       button8.UseVisualStyleBackColor = true;
       button8.Click += button8_Click;
       // 
+      // btnBlockSpacing
+      // 
+      btnBlockSpacing.Location = new Point(207, 358);
+      btnBlockSpacing.Name = "btnBlockSpacing";
+      btnBlockSpacing.Size = new Size(188, 23);
+      btnBlockSpacing.TabIndex = 11;
+      btnBlockSpacing.Text = "Block Spacing";
+      btnBlockSpacing.UseVisualStyleBackColor = true;
+      btnBlockSpacing.Click += btnBlockSpacing_Click;
+      // 
       // frmMain
       // 
       AutoScaleDimensions = new SizeF(7F, 15F);
       AutoScaleMode = AutoScaleMode.Font;
       ClientSize = new Size(800, 450);
+      Controls.Add(btnBlockSpacing);
       Controls.Add(button8);
       Controls.Add(button7);
       Controls.Add(button6);
@@ -186,5 +198,6 @@
     private Button button6;
     private Button button7;
     private Button button8;
+    private Button btnBlockSpacing;
   }
 }

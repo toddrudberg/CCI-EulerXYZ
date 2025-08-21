@@ -481,12 +481,12 @@ namespace GCodeParser
       {
         Electroimpact.FileParser.cFileParse fp = new Electroimpact.FileParser.cFileParse();
         cMotionArguments args = new cMotionArguments();
-        fp.GetArgument(line, "X=", out double X, true);
-        fp.GetArgument(line, "Y=", out double Y, true);
-        fp.GetArgument(line, "Z=", out double Z, true);
-        fp.GetArgument(line, "RZ=", out double RZ, true);
-        fp.GetArgument(line, "RY=", out double RY, true);
-        fp.GetArgument(line, "RX=", out double RX, true);
+        fp.GetArgument(line, "X=", out double X, false);
+        fp.GetArgument(line, "Y=", out double Y, false);
+        fp.GetArgument(line, "Z=", out double Z, false);
+        fp.GetArgument(line, "RZ=", out double RZ, false);
+        fp.GetArgument(line, "RY=", out double RY, false);
+        fp.GetArgument(line, "RX=", out double RX, false);
         fp.GetArgument(line, "ROTX=DC(", out double ROTX, false);
         fp.GetArgument(line, "DIST=", out double DIST, false);
         fp.GetArgument(line, "N", out double N, false); // Optional N value
@@ -756,5 +756,157 @@ namespace GCodeParser
         Console.WriteLine("Output copied to clipboard.");
       }
     }
-  }
+
+    internal static void adjustBlockSpacing(string fileName, string outputFileName)
+    {
+      string numberFormat = "F6";
+      bool usePTPforOffpart = true;
+      bool noMidCourseMCodes = true;
+      double minSpacing = 5.0; // Minimum distance to trigger a print of the line
+      double minAngleChange = 5.0; // Minimum angle change to trigger a print of the line
+
+      long count = 0;
+      Electroimpact.FileParser.cFileParse fp = new Electroimpact.FileParser.cFileParse();
+      List<string> output = new List<string>();
+
+      // Helper subFunctions:
+      string removeExtraDigits(string line, cMotionArguments args)
+      {
+        string outputline = line;
+        fp.ReplaceArgument(outputline, "X=", args.X, out outputline, numberFormat);
+        fp.ReplaceArgument(outputline, "Y=", args.Y, out outputline, numberFormat);
+        fp.ReplaceArgument(outputline, "Z=", args.Z, out outputline, numberFormat);
+        fp.ReplaceArgument(outputline, "RX=", args.RX, out outputline, numberFormat);
+        fp.ReplaceArgument(outputline, "RY=", args.RY, out outputline, numberFormat);
+        fp.ReplaceArgument(outputline, "RZ=", args.RZ, out outputline, numberFormat);
+        fp.ReplaceArgument(outputline, "ROTX=DC(", args.ROTX, out outputline, numberFormat);
+        return outputline;
+      }
+
+      // Main Process:
+
+      int state = 0;
+      cMotionArguments argsLastPrint = new cMotionArguments();
+      string lastLine = "";
+      string lastMotionLine = "";
+      foreach (string line in File.ReadAllLines(fileName))
+      {
+        if (count % 1000 == 0)
+        {
+          fp.GetArgument(line, "N", out double dog, true);
+          Console.WriteLine($"Processing Line: {dog:F0}");
+        }
+        count++;
+
+        switch (state)
+        {
+          case 0:
+            if (line.Contains("FEED"))
+            {
+              state++;
+            }
+            break;
+
+          case 1:
+            if (line.Contains("UV(0)"))
+              state = 0;
+            break;
+        }
+        if( state == 0 )
+        {
+          // look to see if we are in a transit line and insert a PTP if we are:
+          if (line.Contains("SKIP_EXIT:"))
+          {
+            if (usePTPforOffpart)
+            {
+              output.Add(line);
+              output.Add("PTP");
+              continue;
+            }
+          }
+
+          if (line.Contains("ALL_RESTARTS"))
+          {
+            if (usePTPforOffpart)
+            {
+              output.Add("CP");
+            }
+          }
+          if (line.Contains("G1") || line.Contains("G9"))
+          {
+            cMotionArguments theseArgs = cMotionArguments.getMotionArguments(line);
+            string outputGline = removeExtraDigits(line, theseArgs);
+            output.Add(outputGline);
+          }
+          else
+          {
+            output.Add(line);
+          }
+        }
+        else if (state > 0)
+        {
+          if (line.Contains("G1") || line.Contains("G9"))
+          {
+            cMotionArguments args = cMotionArguments.getMotionArguments(line);
+            double dx = args.X - argsLastPrint.X;
+            double dy = args.Y - argsLastPrint.Y;
+            double dz = args.Z - argsLastPrint.Z;
+            double dist = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+            double drx = args.RX - argsLastPrint.RX;
+            double dry = args.RY - argsLastPrint.RY;
+            double drz = args.RZ - argsLastPrint.RZ;
+
+            if (dist > minSpacing || dry > minAngleChange || drz > minAngleChange)
+            {
+              string outputline = removeExtraDigits(line, args);
+
+              output.Add(outputline);
+              lastMotionLine = line;
+              argsLastPrint = args;
+            }
+          }
+          else if (line.Contains("M72") || line.Contains("M61") || line.Contains("M68") || line.Contains("M64"))
+          {
+            if (lastLine.Contains("G1") || lastLine.Contains("G9"))
+            {
+              if (lastLine != lastMotionLine)
+              {
+                argsLastPrint = cMotionArguments.getMotionArguments(lastLine);
+                string outputline = removeExtraDigits(lastLine, argsLastPrint);
+                output.Add(outputline);
+              }
+            }
+            else
+            {
+              fp.GetArgument(line, "N", out double dog, true);
+              MessageBox.Show($"Uh Oh. check line {dog}");
+            }
+            if( !noMidCourseMCodes )
+              output.Add(line);
+          }
+          else
+          {
+            output.Add(line);
+          }
+          lastLine = line;
+        }
+
+      }
+
+
+      //output the resutlts:
+      string text = string.Join(Environment.NewLine, output);
+      if (!string.IsNullOrEmpty(outputFileName))
+      {
+        File.WriteAllText(outputFileName, text);
+        Console.WriteLine($"Output written to {outputFileName}");
+      }
+      else
+      {
+        Clipboard.SetText(text);
+        Console.WriteLine("Output copied to clipboard.");
+      }
+    }
+
+  } 
 }

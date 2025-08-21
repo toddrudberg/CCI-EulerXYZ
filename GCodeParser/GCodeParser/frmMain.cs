@@ -984,7 +984,7 @@ namespace GCodeParser
     private void button8_Click(object sender, EventArgs e)
     {
       //N76 APPROACH_ROTX_XYZ(-108.58134, 85.87435, 120.16431, -45.0000000, -11.9968993, 45.7414848, -45.00000, 0.000)
-      double x,y,z,rz,ry,rx,rotx;
+      double x, y, z, rz, ry, rx, rotx;
       x = -108.58134;
       y = 85.87435;
       z = 120.16431;
@@ -1034,7 +1034,7 @@ namespace GCodeParser
       vy = -Math.Sin(xformedPose.rx.D2R()) * Math.Cos(xformedPose.ry.D2R());
       vz = Math.Cos(xformedPose.rx.D2R()) * Math.Cos(xformedPose.ry.D2R());
 
-      double[] k = new double[] { xformedPoseLHT.M[0,2], xformedPoseLHT.M[1, 2], xformedPoseLHT.M[2, 2] };
+      double[] k = new double[] { xformedPoseLHT.M[0, 2], xformedPoseLHT.M[1, 2], xformedPoseLHT.M[2, 2] };
 
       Console.WriteLine($"xformedPose: X={xformedPose.x:F3} Y={xformedPose.y:F3} Z={xformedPose.z:F3} RX={xformedPose.rx:F3} RY={xformedPose.ry:F3} RZ={xformedPose.rz:F3} ROTX=DC({rotx:F3})".Pastel(Color.Cyan));
       Console.WriteLine($"K Vector: KX={k[0]:F3} KY={k[1]:F3} KZ={k[2]:F3}".Pastel(Color.Cyan));
@@ -1058,6 +1058,25 @@ namespace GCodeParser
       Console.WriteLine($"New Pose: X={newPose.x:F3} Y={newPose.y:F3} Z={newPose.z:F3} RX={newPose.rx:F3} RY={newPose.ry:F3} RZ={newPose.rz:F3} ROTX=DC({rotx:F3})".Pastel(Color.Cyan));
 
 
+    }
+
+    private void btnBlockSpacing_Click(object sender, EventArgs e)
+    {
+      this.Enabled = false;
+      OpenFileDialog ofd = new OpenFileDialog();
+      ofd.Filter = "GCode files (*.mpf)|*.mpf|All files (*.*)|*.*";
+      ofd.Title = "Select GCode File";
+      if (ofd.ShowDialog() != DialogResult.OK)
+      {
+        MessageBox.Show("No file selected.");
+        return;
+      }
+      // Write the output lines to a new file
+      string directory = Path.GetDirectoryName(ofd.FileName);
+      string filenameWithoutExt = Path.GetFileNameWithoutExtension(ofd.FileName);
+      string outputFileName = Path.Combine(directory, filenameWithoutExt + "_bs.mpf");
+      ConvertProgram.adjustBlockSpacing(ofd.FileName, outputFileName);
+      this.Enabled = true;
     }
   }
 }
